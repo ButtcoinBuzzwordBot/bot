@@ -9,8 +9,8 @@ import praw
 DEBUG = False
 AUTHOR = 'BarcaloungerJockey'
 BOTNAME = 'Buttcoin Buzzword Bingo Bot *by /u/' + AUTHOR +')'
-SUBREDDIT = 'testingground4bots'
-#SUBREDDIT = 'buttcoin'
+#SUBREDDIT = 'testingground4bots'
+SUBREDDIT = 'buttcoin'
 TRIGGER = '!BuzzwordBingo'
 MIN_MATCHES = 6
 DEFAULT_MATCHES = 8
@@ -78,6 +78,7 @@ basephrases = [
     'under a bridge', 'Davor Coin', 'ponzi scheme'
     ]
 
+# TODO comment the subroutines
 def postReply (matches, won):
     sig = (
         "\n_____\n\n^(I'm a hand-run baby bot, *bleep* *bloop* "
@@ -103,6 +104,16 @@ def alreadyReplied (comment):
     print ("Haven't replied, yay!")
     return False
 
+def checkComment (comment):
+    
+        comment.refresh()
+        replies = comment.replies
+        for reply in replies:
+            subcomment = r.comment(reply)
+            checkComment(subcomment)
+        if (TRIGGER in comment.body):
+            playBingo(comment)
+
 def playBingo (comment):
     # Check we haven't replied already.
     if alreadyReplied(comment):
@@ -113,7 +124,15 @@ def playBingo (comment):
     try:
         text = parent.crosspost_parent_list[0]['selftext']
     except AttributeError:
-        text = parent.selftext
+        try:
+            text = parent.selftext
+        except AttributeError:
+            try:
+                text = parent.body
+            except:
+                print ('Error: selftext or body not found')
+
+    # TODO: remove begin/end punctuation from words.
     words = text.lower().split()
 
     # First seatch for buzzphrases.
@@ -142,6 +161,10 @@ def playBingo (comment):
             time.sleep(600)
     except praw.exceptions.APIException as err:
         print(err)
+
+#
+# MAIN
+#
 
 # Build sets of words, phrases.
 matches_found = set()
@@ -178,17 +201,7 @@ for submission in sub:
     post = r.submission(submission)
 
     for comment in post.comments:
-        if (comment.author != AUTHOR):
+        if DEBUG and (comment.author != AUTHOR):
             print (AUTHOR + " didn't post it, skipping")
             break 
-        comment.refresh()
-        replies = comment.replies
-        for reply in replies:
-            subcomment = r.comment(reply)
-            print (subcomment.body)
-            if (TRIGGER in subcomment.body):
-                print ("Reply - Time to play!")
-                playBingo(subcomment)
-        if (TRIGGER in comment.body):
-            print ("Comment - Time to play!")
-            playBingo(comment)
+        checkComment(comment)
