@@ -1,22 +1,30 @@
 import collections, praw
 
-#This is simple collection of functions to prevent reddit bots from:
-#1. replying twice to same summon
-#2. prevent chain of summons
-#3. have limit on number of replies per submission
-
-#Note: See TODO and make according changes
-#Note: You can use reply function like this: post_reply(comment-content,praw-comment-object)
-#Note: is_summon_chain returns True if grandparent comment is bot's own
-#Note: comment_limit_reached returns True if current will be 5th reply in same thread, resets on process restart
-#Note: don't forget to decalre `submissioncount = collections.Counter()` before starting your main loop
-#Note: Here, r = praw.Reddit('unique client identifier')
+# This is simple collection of functions to prevent reddit bots from:
+#
+# 1. Replying twice to same summon.
+# 2. Prevents chain of summons.
+# 3. Enforces limit on number of replies per submission.
+#
+# Notes:
+#
+#   You can use reply function like this:
+#     post_reply(comment-content, praw-comment-object)
+#
+#   is_summon_chain returns True if grandparent comment is bot's own.
+#   comment_limit_reached returns True if current will be 5th reply in
+#     same thread, resets on process restart
+#
+#   Declare `submissioncount = collections.Counter()` before starting your main
+#     loop
 
 def is_summon_chain(post):
+  global BOTNAME
+
   if not post.is_root:
     parent_comment_id = post.parent_id
     parent_comment = r.get_info(thing_id=parent_comment_id)
-    if parent_comment.author != None and str(parent_comment.author.name) == 'bot_username': #TODO put your bot username here
+    if parent_comment.author != None and str(parent_comment.author.name) == BOTNAME:
       return True
     else:
       return False
@@ -24,14 +32,17 @@ def is_summon_chain(post):
     return False
   
 def comment_limit_reached(post):
-  global submissioncount
+  global submissioncount, BOTNAME
+  
   count_of_this = int(float(submissioncount[str(post.submission.id)]))
-  if count_of_this > 4: #TODO change the number accordingly. float("inf") for infinite (Caution!)
+  if count_of_this > 2:
     return True
   else:
     return False
   
 def is_already_done(post):
+  global BOTNAME
+
   done = False
   numofr = 0
   try:
@@ -41,7 +52,7 @@ def is_already_done(post):
     pass
   if numofr != 0:
     for repl in post.replies:
-      if repl.author != None and repl.author.name == 'bot_username': #TODO put your bot username here
+      if repl.author != None and repl.author.name == BOTNAME
 	done = True
 	continue
   if done:
@@ -49,7 +60,7 @@ def is_already_done(post):
   else:
     return False
 
-def post_reply(reply,post):
+def post_reply(reply, post):
   global submissioncount
   try:
     a = post.reply(reply)
