@@ -2,6 +2,8 @@
 
 import os
 import time
+import re
+import string
 
 import praw
 
@@ -37,22 +39,23 @@ basewords = [
     'GDax', 'Bitpay', 'Viacoin', 'Casper', 'shard', 'sharding', 'Vitalik',
     'Buterin', 'Satoshi', 'Nakamoto', 'CryptoDad', 'Winklevoss', 'Coindesk',
     'Giancarlo', 'wallet', 'mining', 'miner', 'bitminer', 'batching', 'KYC',
-    'hashcash', 'candlestick', 'fomo\'d', 'premined', 'premining', 'DYOR',
+    'hashcash', 'candlestick', 'fomod', 'premined', 'premining', 'DYOR',
     'blocksize', 'mempool', 'fiat', 'bitmain', 'dapp', 'ICO', 'exchange',
     'hashrate', 'fomo', 'fud', 'hodl', 'hodling', 'hodler', 'Raiblock',
     'Lambo', 'adoption', 'scam', 'scammer', 'funbux', 'butter', 'nocoiner',
-    'blockchain', 'node', 'PoW', 'PoS', 'permissionless', 'immutable',
+    'blockchain', 'node', 'PoW', 'PoS', 'permissionless', 'immutable', 'PoA',
     'altcoin', 'shitcoin', 'SegWit', 'double-spend', 'ASIC', 'LN', 'cypherpunk',
     'crypto', 'cryptocurrency', 'cryptocurrencies', 'shill', 'shilling',
     'token', 'airdrop', 'decentralized', 'whitepaper', 'Electrum', 'DLT', 'DAG',
     'feeless', 'bitcore', 'maximalist', 'faucet', 'Coincheck', 'deflationary',
     'libertarian', 'ancap', 'trustless', 'trustlessly', 'mewn', 'cryptospace',
     'request', 'req', 'solidity', 'Etherscan', 'MtGox', 'whale', 'statist',
-    'Gox', 'Karpeles', 'SegWit2x', 'Davor', 'Davorcoin', 'bubble',
+    'Gox', 'Karpeles', 'SegWit2x', 'Davor', 'Davorcoin', 'bubble', 'buttrex',
     'Lamborghini', 'decentralizing', 'SAFT', 'KodakCoin', 'blockfolio',
     'magicbeans', 'stablecoin', 'oyster', 'pearl', 'PRL', 'dinero', 'fuding',
-    'fomoing', 'curl', 'goxxed', 'wagecuck', 'debtslave', 'Blockfolio',
-    'Robinhood'
+    'fomoing', 'curl', 'goxxed', 'wagecuck', 'debtslave', 'Blockfolio', 'cult',
+    'Robinhood', 'aidscoin', 'sodl', 'sodler', 'sodling', 'gas', 'plasmacash',
+    'mainnet', 'testnet', 'BaaS'
     ]
 
 basephrases = [
@@ -60,11 +63,11 @@ basephrases = [
     'smart contract', 'this is good for', '1 BTC = 1 BTC', 'store of value',
     'distributed ledger', 'white paper', 'Sybil attack', 'double spending',
     'Lightning Network', 'public permissioned', 'Segregated Witness',
-    'pump and dump', 'pump & dump', 'pumpndump', 'Proof of Work',
+    'pump and dump', 'pump & dump', 'pumpndump', 'Proof of Work', 'fun bux',
     'Proof of Stake', 'hash rate', 'the moon', 'Initial Coin Offering',
     'Roger Ver', 'Craig Wright', 'Morgan Rockwell', 'Mark Karpeles',
     'Jihan Wu', 'Digital Gold', 'double spend', 'buy the dip', 'digital money',
-    'genesis address', 'genesis block', 'exchange targeted',
+    'genesis address', 'genesis block', 'exchange targeted', 'aids coin',
     'targeted by hackers', 'theft of', 'exit scam', 'cyber heist',
     'strong hand', 'weak hand', 'highly secure', 'Mt. Gox',
     'captain of industry', 'captains of industry', 'Austrian school',
@@ -75,7 +78,9 @@ basephrases = [
     'shit coin', 'stable coin', 'arb bot', 'sorry for your loss', 'new tech',
     'store of value', 'transaction fees', 'Greater Fool Theory', 'wage cuck',
     'zero sum game', 'zero-sum game', 'debt slave', 'debt slavery',
-    'under a bridge', 'Davor Coin', 'ponzi scheme'
+    'under a bridge', 'Davor Coin', 'ponzi scheme', 'plasma cash', 'main net',
+    'Brock Pierce', 'test net', 'proof of authority', 'thor power',
+    'blockchain as a service'
     ]
 
 # TODO comment the subroutines
@@ -89,7 +94,7 @@ def postReply (matches, won):
         reply = '**Bingo**! We have a winner with *' + str(len(matches)) + '* squares found!!\n\n**Buzzwords**: '
         reply += ', '.join(matches)
     else:
-        reply = 'Sorry, no winner this time. Convert more filty fiat to buttcoins to play again'
+        reply = 'Sorry weak hands, no winner this time. Convert more filty fiat to buttcoins to mine for comedy gold again.'
     return (reply + sig)
 
 def alreadyReplied (comment):
@@ -132,8 +137,11 @@ def playBingo (comment):
             except:
                 print ('Error: selftext or body not found')
 
-    # TODO: remove begin/end punctuation from words.
-    words = text.lower().split()
+    # Remove all punctuation from words, and convert dashes to spaces for
+    # phrases.
+    regex = re.compile('[%s]' % re.escape(string.punctuation))
+    words = regex.sub('', text).lower().split()
+    text = text.replace('-', ' ')
 
     # First seatch for buzzphrases.
     for phrase in buzzphrases:
