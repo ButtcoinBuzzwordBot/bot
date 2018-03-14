@@ -4,26 +4,33 @@ import os
 import time
 import re
 import string
+import requests
 
 import praw
 
-# Settings. TODO move to cfg file.
-DEBUG = False
+# Settings. When DEBUG is True bot will only reply to posts by AUTHOR.
+DEBUG = True
 AUTHOR = 'BarcaloungerJockey'
-BOTNAME = 'Buttcoin Buzzword Bingo Bot *by /u/' + AUTHOR +')'
-#SUBREDDIT = 'testingground4bots'
+BOTNAME = 'python:buzzword.bingo.bot:v0.3 (by /u/' + AUTHOR +')'
 SUBREDDIT = 'buttcoin'
 TRIGGER = '!BuzzwordBingo'
+# TODO: make scores dynamic, increase on winning score, decrease on losing.
+# Don't go above/below set min/max.
 MIN_MATCHES = 6
-DEFAULT_MATCHES = 8
+MATCHES = 6
+MAX_MATCHES = 20
+# Ratelimit starts at 10 minutes per reply for a bot account w/no karma.
+# Drops quickly as karma increases.
+RATELIMIT = 120
 
-# Retrieve OAuth information. TODO OAth to envs.
+# Retrieve OAuth information.
 USERNAME = os.environ['REDDIT_USERNAME']
 PASSWORD = os.environ['REDDIT_PASSWORD']
-#CLIENT_ID = os.environ['CLIENT_ID']
-CLIENT_ID = '-QiIrl-1_LVKog'
-#CLIENT_SECRET = os.environ['CLIENT_SECRET']
+CLIENT_ID = os.environ['CLIENT_ID']
+CLIENT_SECRET = os.environ['CLIENT_SECRET']
+
 if DEBUG:
+    SUBREDDIT = 'testingground4bots'
     print ('Username/pass: ' + USERNAME, PASSWORD)
     print ('Client ID/pass: ' + CLIENT_ID, CLIENT_SECRET)
 
@@ -44,7 +51,7 @@ basewords = [
     'hashrate', 'fomo', 'fud', 'hodl', 'hodling', 'hodler', 'Raiblock',
     'Lambo', 'adoption', 'scam', 'scammer', 'funbux', 'butter', 'nocoiner',
     'blockchain', 'node', 'PoW', 'PoS', 'permissionless', 'immutable', 'PoA',
-    'altcoin', 'shitcoin', 'SegWit', 'double-spend', 'ASIC', 'LN', 'cypherpunk',
+    'altcoin', 'shitcoin', 'SegWit', 'ASIC', 'LN', 'cypherpunk',
     'crypto', 'cryptocurrency', 'cryptocurrencies', 'shill', 'shilling',
     'token', 'airdrop', 'decentralized', 'whitepaper', 'Electrum', 'DLT', 'DAG',
     'feeless', 'bitcore', 'maximalist', 'faucet', 'Coincheck', 'deflationary',
@@ -55,7 +62,8 @@ basewords = [
     'magicbeans', 'stablecoin', 'oyster', 'pearl', 'PRL', 'dinero', 'fuding',
     'fomoing', 'curl', 'goxxed', 'wagecuck', 'debtslave', 'Blockfolio', 'cult',
     'Robinhood', 'aidscoin', 'sodl', 'sodler', 'sodling', 'gas', 'plasmacash',
-    'mainnet', 'testnet', 'BaaS'
+    'mainnet', 'testnet', 'BaaS', 'BIP70', 'P2P', 'lamboaire', 'silkroad',
+    'cryptocoin', 'hyperbitcoinization', 'hyperdeflationary'
     ]
 
 basephrases = [
@@ -69,7 +77,7 @@ basephrases = [
     'Jihan Wu', 'Digital Gold', 'double spend', 'buy the dip', 'digital money',
     'genesis address', 'genesis block', 'exchange targeted', 'aids coin',
     'targeted by hackers', 'theft of', 'exit scam', 'cyber heist',
-    'strong hand', 'weak hand', 'highly secure', 'Mt. Gox',
+    'strong hand', 'weak hand', 'highly secure', 'Mt. Gox', 'Silk Road',
     'captain of industry', 'captains of industry', 'Austrian school',
     'Federal Reserve', 'wealth transfer', 'trading bot', 'bag holder',
     'bag holding', 'holding the bag', 'token contract', 'Comedy Gold',
@@ -77,10 +85,11 @@ basephrases = [
     'magic beans', 'Winklevoss twins', 'private key', 'public key', 'alt coin',
     'shit coin', 'stable coin', 'arb bot', 'sorry for your loss', 'new tech',
     'store of value', 'transaction fees', 'Greater Fool Theory', 'wage cuck',
-    'zero sum game', 'zero-sum game', 'debt slave', 'debt slavery',
+    'zero sum game', 'zero sum game', 'debt slave', 'debt slavery',
     'under a bridge', 'Davor Coin', 'ponzi scheme', 'plasma cash', 'main net',
     'Brock Pierce', 'test net', 'proof of authority', 'thor power',
-    'blockchain as a service'
+    'blockchain as a service', 'pre sale', 'crowd sale', 'digital cash',
+    'John McAfee', 'Calvin Ayre', 'arise chikun', 'top tier'
     ]
 
 # TODO comment the subroutines
@@ -94,7 +103,9 @@ def postReply (matches, won):
         reply = '**Bingo**! We have a winner with *' + str(len(matches)) + '* squares found!!\n\n**Buzzwords**: '
         reply += ', '.join(matches)
     else:
-        reply = 'Sorry weak hands, no winner this time. Convert more filty fiat to buttcoins to mine for comedy gold again.'
+        reply = 'Sorry, your hands are weak. Current score to win is ' + MATCHES + ' or more matches. Convert more filty fiat to buttcoins and try again to mine for comedy gold.'
+
+    # TODO: raise or lower the current score to win on win/loss.
     return (reply + sig)
 
 def alreadyReplied (comment):
@@ -103,50 +114,98 @@ def alreadyReplied (comment):
     for reply in replies:
         comment = r.comment(reply)
         if (comment.author == USERNAME):
-            print (comment, comment.author)
-            print ("Replied already, movin' on")
+            if DEBUG:
+                print ("Replied already, movin' on.")
             return True
-    print ("Haven't replied, yay!")
+    if DEBUG:
+        print ("Okay to reply.")
     return False
 
 def checkComment (comment):
-    
-        comment.refresh()
-        replies = comment.replies
-        for reply in replies:
-            subcomment = r.comment(reply)
-            checkComment(subcomment)
-        if (TRIGGER in comment.body):
-            playBingo(comment)
+    if DEBUG:
+        print('comment: ' + format(comment))
+    comment.refresh()
+    replies = comment.replies
+    for reply in replies:
+        subcomment = r.comment(reply)
+        #if DEBUG:
+        #    print ('reply: ' + format(reply))
+        subcomment.refresh()
+        checkComment(subcomment)
+    if (TRIGGER in comment.body):
+        playBingo(comment)
+
+def getText (parent):
+    # Try to get text from original post.
+    try:
+        text = parent.selftext
+    except AttributeError:
+        # Try to get body of a comment.
+        try:
+            text = parent.body
+        except:
+            # Try to get text from a crosspost. 
+            try:
+                text = parent.crosspost_parent_list[0]['selftext']
+                print (1)
+            except AttributeError:
+                print ('ERROR: Unsupported or broken post reference.')
+                
+    if text is None or text is '':
+        # Try to get text from linked post in title.
+        try:
+            url = parent.url
+            print('parent.url=' + url)
+            if re.match(r'http.*(redd.it|reddit.com)/.*', url):
+                regex = re.compile('^http.*/comments/([^/]+).*$')
+                linked = regex.search(url).group(1)
+                #print('linked comment: ' + linked)
+                post = r.submission(linked)
+                #print('post: ' + format(post.body))
+                #regex = re.compile('^http.*(/r/[^/]+).*$')
+                #linksub = regex.search(url).group(1)
+                #print ('linked sub: ' + linksub)
+                #newsub = r.subreddit(linksub).new()
+                #post = r.submission(newsub)
+                #com2 = r.comment(newcom)
+                text = post.body
+                #next(iter(your_list or []), None)
+                #print(text)
+                exit
+        except AttributeError:
+            print ('ERROR: Not implemented yet.')
+    return(text)
 
 def playBingo (comment):
     # Check we haven't replied already.
     if alreadyReplied(comment):
         return
+    if DEBUG:
+        print('trigger: ' + format(comment))
+        print('trigger text: ' + comment.body + '\n\n')
 
     # Retrieve parent comment or original crosspost.
+    comment.refresh()
     parent = comment.parent()
-    try:
-        text = parent.crosspost_parent_list[0]['selftext']
-    except AttributeError:
-        try:
-            text = parent.selftext
-        except AttributeError:
-            try:
-                text = parent.body
-            except:
-                print ('Error: selftext or body not found')
+    text = getText(parent)
+
+    if DEBUG:
+        #print(vars(parent))
+        #print('parent: ' + format(parent))
+        print('text to score: \'' + text + '\'\n\n')
+        time.sleep (100)
 
     # Remove all punctuation from words, and convert dashes to spaces for
     # phrases.
+    text = text.lower()
     regex = re.compile('[%s]' % re.escape(string.punctuation))
-    words = regex.sub('', text).lower().split()
-    text = text.replace('-', ' ')
+    text = words.replace('\'-/', ' ')
+    words = regex.sub('', text).split()
 
     # First seatch for buzzphrases.
     for phrase in buzzphrases:
         if phrase in text:
-            matches_found.add(phrase)
+            matches_found.add('"' + phrase + '"')
 
     # Search for buzzwords that do not match phrases found.
     matched = ' '.join(match.lower() for match in matches_found)
@@ -160,13 +219,13 @@ def playBingo (comment):
         matches_found.discard(word + 's')
 
     # Post reply to comment then wait out RATELIMIT.
-    reply = postReply(matches_found, (len(matches_found) >= MIN_MATCHES))
+    reply = postReply(matches_found, (len(matches_found) >= MATCHES))
     try:
         if DEBUG:
             print (reply)
         else:
             comment.reply(reply)
-            time.sleep(600)
+            time.sleep(RATELIMIT)
     except praw.exceptions.APIException as err:
         print(err)
 
@@ -200,16 +259,14 @@ if DEBUG:
 
 # 1. Don't reply to the same request more than once.
 # 2. Don't hit the same page more than once per 30 seconds.
-# 3. Requests for multiple resources at once rather than single in a loop.
+# 3. Request multiple resources at once rather than single in a loop.
 
 sub = r.subreddit(SUBREDDIT).new()
 for submission in sub:
-    if DEBUG:
-        print('Post: ' + format(submission))
     post = r.submission(submission)
 
     for comment in post.comments:
         if DEBUG and (comment.author != AUTHOR):
-            print (AUTHOR + " didn't post it, skipping")
-            break 
+            print (AUTHOR + " didn't post it, skipping.")
+            break
         checkComment(comment)
