@@ -10,7 +10,7 @@ import pickle
 import praw
 
 # Settings. When DEBUG is True bot will only reply to posts by AUTHOR.
-DEBUG = True
+DEBUG = False
 AUTHOR = 'BarcaloungerJockey'
 BOTNAME = 'python:buzzword.bingo.bot:v1.0 (by /u/' + AUTHOR +')'
 SUBREDDIT = 'buttcoin'
@@ -84,24 +84,24 @@ if DEBUG:
 
 # Signature for all replies.
 sig = (
-    "\n_____\n\n^(I'm a hand-run baby bot, *bleep* *bloop* "
+    "\n_____\n\n^(I'm a hand-run bot, *bleep* *bloop* "
     "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
 )
+
+#
+# Highscores
+#
 
 # Check for a new highscore. Replace lowest since they're always sorted.
 def updateHighscores (score, name):
     global highscores
 
-    print('length=' + str(len(highscores)))
     if len(highscores) < MAX_HIGHSCORES:
         highscores.append([score, '/u/' + name])
     elif score > highscores[MAX_HIGHSCORES - 1][0]:
         highscores[MAX_HIGHSCORES - 1] = [score, '/u/' + name]
-        highscores.sort(key = lambda x: x[0], reverse = True)
 
-    if DEBUG:
-        for score, name in highscores:
-            print(name + ' got ' + str(score))
+    highscores.sort(key = lambda x: x[0], reverse = True)
     with open(HIGHSCOREFILE, 'wb') as f:
         pickle.dump(highscores, f)
     f.close()
@@ -110,8 +110,7 @@ def updateHighscores (score, name):
 def getHighscores(comment):
     global highscores, sig
 
-    # TODO: prevent duplicates for already replied.
-    if alreadyRepled(comment):
+    if alreadyReplied(comment):
         return
 
     reply = '**Buttcoin Buzzword Bingo Highscores**\n_____\n\n'
@@ -120,6 +119,22 @@ def getHighscores(comment):
         reply += str(count) + '. ' + name + ': ' + str(score) + '\n'
         count += 1
     postReply(comment, reply + sig)
+
+#
+# Replies
+#
+
+# Check to see if a comment has been replied to already to avoid duplicates.
+def alreadyReplied (comment):
+    replies = comment.replies
+    for reply in replies:
+        if (r.comment(reply).author.name == USERNAME):
+            if DEBUG:
+                print ("Replied already, movin' on.")
+            return True
+    if DEBUG:
+        print ("Okay to reply.")
+    return False
 
 # Creates a standard reply for wins/losses, and updates minimum score required.
 def getReply (matches, score):
@@ -160,25 +175,16 @@ def postReply (comment, reply):
     except praw.exceptions.APIException as err:
         print(err)
 
-# Check to see if a comment has been replied to already to avoid duplicates.
-def alreadyReplied (comment):
-    replies = comment.replies
-    for reply in replies:
-        comment = r.comment(reply)
-        if (comment.author == USERNAME):
-            if DEBUG:
-                print ("Replied already, movin' on.")
-            return True
-    if DEBUG:
-        print ("Okay to reply.")
-    return False
+#
+# Comments.
+#
 
 # Check a comment or post for the invocation keyword.
 def checkComment (comment):
     if DEBUG:
         print('comment: ' + format(comment))
     comment.refresh()
-    print('.', end='')
+    print('.', end='', flush=True)
     replies = comment.replies
     for reply in replies:
         subcomment = r.comment(reply)
