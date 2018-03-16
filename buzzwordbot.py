@@ -4,24 +4,30 @@ import os
 import time
 import re
 import string
+import pickle
 #import requests
 
 import praw
 
 # Settings. When DEBUG is True bot will only reply to posts by AUTHOR.
-DEBUG = False
+DEBUG = True
 AUTHOR = 'BarcaloungerJockey'
-BOTNAME = 'python:buzzword.bingo.bot:v0.3 (by /u/' + AUTHOR +')'
+BOTNAME = 'python:buzzword.bingo.bot:v1.0 (by /u/' + AUTHOR +')'
 SUBREDDIT = 'buttcoin'
 TRIGGER = '!BuzzwordBingo'
+# TODO: add commands after trigger, search for each
+CMD_HS = TRIGGER + ' highscores'
+CMD_SCORE = TRIGGER + ' score'
 SCOREFILE = 'score.txt'
 WORDFILE = 'words.txt'
 PHRASEFILE = 'phrases.txt'
-MIN_MATCHES = 6
-MAX_MATCHES = 20
+HIGHSCOREFILE = 'highscores.txt'
+MAX_HIGHSCORES = 5
+MIN_MATCHES = 4
+MAX_MATCHES = 12
 # Ratelimit starts at 10 minutes per reply for a bot account w/no karma.
-# Drops quickly as karma increases.
-RATELIMIT = 120
+# Drops quickly as karma increases, can go down to 30 seconds minimum.
+RATELIMIT = 30
 
 # Retrieve OAuth information.
 USERNAME = os.environ['REDDIT_USERNAME']
@@ -47,29 +53,79 @@ except ValueError (err):
 scoref.close()
 
 # Read words and phrases, build sets for each.
-wordsf = open (WORDFILE, 'r')
+wordsf = open(WORDFILE, 'r')
 words  = wordsf.read().splitlines()
+wordsf.close()
 for word in words:
     buzzwords.add(word)
     buzzwords.add(word + 's')
-wordsf.close()
 
-phrasesf = open (PHRASEFILE, 'r')
+phrasesf = open(PHRASEFILE, 'r')
 phrases = phrasesf.read().splitlines()
+phrasesf.close()
 for phrase in phrases:
     buzzphrases.add(phrase)
-phrasesf.close()
+
+# Load high scores. If file does not exist, create one.
+highscores = []
+if os.path.isfile(HIGHSCOREFILE):
+    with open(HIGHSCOREFILE, 'rb') as f:
+        highscores = pickle.load(f)
+else:
+    for i in range (0,3):
+        highscores.append([i + 1, '/u/' + AUTHOR])
+    with open(HIGHSCOREFILE, 'wb') as f:
+        pickle.dump(highscores, f)
+f.close()
+highscores.sort(key = lambda x: x[0], reverse = True)
+if DEBUG:
+    for score, name in highscores:
+        print('Name: ' + name + ' got ' + str(score))
+
+# Signature for all replies.
+sig = (
+    "\n_____\n\n^(I'm a hand-run baby bot, *bleep* *bloop* "
+    "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
+)
+
+# Check for a new highscore. Replace lowest since they're always sorted.
+def updateHighscores (score, name):
+    global highscores
+
+    print('length=' + str(len(highscores)))
+    if len(highscores) < MAX_HIGHSCORES:
+        highscores.append([score, '/u/' + name])
+    elif score > highscores[MAX_HIGHSCORES - 1][0]:
+        highscores[MAX_HIGHSCORES - 1] = [score, '/u/' + name]
+        highscores.sort(key = lambda x: x[0], reverse = True)
+
+    if DEBUG:
+        for score, name in highscores:
+            print(name + ' got ' + str(score))
+    with open(HIGHSCOREFILE, 'wb') as f:
+        pickle.dump(highscores, f)
+    f.close()
+
+# Retrieve highscores for reply.
+def getHighscores(comment):
+    global highscores, sig
+
+    # TODO: prevent duplicates for already replied.
+    if alreadyRepled(comment):
+        return
+
+    reply = '**Buttcoin Buzzword Bingo Highscores**\n_____\n\n'
+    count = 1
+    for score, name in highscores:
+        reply += str(count) + '. ' + name + ': ' + str(score) + '\n'
+        count += 1
+    postReply(comment, reply + sig)
 
 # Creates a standard reply for wins/losses, and updates minimum score required.
 def getReply (matches, score):
-    global MATCHES
+    global MATCHES, sig
 
-    sig = (
-        "\n_____\n\n^(I'm a hand-run baby bot, *bleep* *bloop* "
-        "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
-        )
-
-    if score > MATCHES:
+    if score >= MATCHES:
         reply = (
             '**Bingo**! We have a winner with *' + str(score) +
             '* squares found!!\n\n**Buzzwords**: ' + matches)
@@ -93,10 +149,19 @@ def getReply (matches, score):
     scoref.close()
     return (reply + sig)
 
+def postReply (comment, reply):
+    global RATELIMIT
+
+    try:
+        if DEBUG:
+            print (reply)
+        comment.reply(reply)
+        time.sleep(RATELIMIT)
+    except praw.exceptions.APIException as err:
+        print(err)
+
 # Check to see if a comment has been replied to already to avoid duplicates.
 def alreadyReplied (comment):
-    # TODO: need this?
-    #comment.refresh()
     replies = comment.replies
     for reply in replies:
         comment = r.comment(reply)
@@ -119,7 +184,9 @@ def checkComment (comment):
         subcomment = r.comment(reply)
         subcomment.refresh()
         checkComment(subcomment)
-    if (TRIGGER in comment.body):
+    if (CMD_HS in comment.body):
+        getHighscores(comment)
+    elif (TRIGGER in comment.body):
         playBingo(comment)
 
 # Retrieve text from a variety of possible sources: original or crosspost,
@@ -205,15 +272,13 @@ def playBingo (comment):
     for word in dupes:
         matches_found.discard(word + 's')
 
-    # Post reply to comment then wait out RATELIMIT. Reset found matches.
+    if DEBUG:
+        print (matches_found)
+
+    # Check highscores. Post reply to comment then wait out RATELIMIT.
+    updateHighscores(len(matches_found), comment.author.name)
     reply = getReply(', '.join(matches_found), len(matches_found))
-    try:
-        if DEBUG:
-            print (reply)
-        comment.reply(reply)
-        time.sleep(RATELIMIT)
-    except praw.exceptions.APIException as err:
-        print(err)
+    postReply(comment, reply)
 
 #
 # MAIN
