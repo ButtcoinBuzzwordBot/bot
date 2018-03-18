@@ -177,6 +177,8 @@ aidscoin
 sodl
 sodler
 sodling
+godl
+bodl
 gas
 plasmacash
 plasma
@@ -212,3 +214,16 @@ Electroneum
 ETN
 Verge
 XVG
+Ethereum Classic
+ETC
+Augur
+Cryptopia
+Skycoin
+BitcoinPrivate
+BTCP
+ZClassic
+ZCL
+BTG
+Rialto
+XRL
+PAT

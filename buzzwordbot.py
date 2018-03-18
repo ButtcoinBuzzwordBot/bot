@@ -171,8 +171,9 @@ def postReply (comment, reply):
         if DEBUG:
             print (reply)
         comment.reply(reply)
+        print ('X', end='')
         time.sleep(RATELIMIT)
-    except praw.exceptions.APIException as err:
+    except: praw.exceptions.APIException as err:
         print(err)
 
 #
