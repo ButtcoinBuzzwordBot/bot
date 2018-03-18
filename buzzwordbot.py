@@ -5,29 +5,36 @@ import time
 import re
 import string
 import pickle
-#import requests
+import urllib
 
+# Packages must be installed.
+import bs4
 import praw
 
 # Settings. When DEBUG is True bot will only reply to posts by AUTHOR.
-DEBUG = False
+DEBUG = True
 AUTHOR = 'BarcaloungerJockey'
 BOTNAME = 'python:buzzword.bingo.bot:v1.0 (by /u/' + AUTHOR +')'
 SUBREDDIT = 'buttcoin'
-TRIGGER = '!BuzzwordBingo'
-# TODO: add commands after trigger, search for each
-CMD_HS = TRIGGER + ' highscores'
-CMD_SCORE = TRIGGER + ' score'
-SCOREFILE = 'score.txt'
 WORDFILE = 'words.txt'
 PHRASEFILE = 'phrases.txt'
-HIGHSCOREFILE = 'highscores.txt'
-MAX_HIGHSCORES = 5
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+
 # Ratelimit starts at 10 minutes per reply for a bot account w/no karma.
 # Drops quickly as karma increases, can go down to 30 seconds minimum.
 RATELIMIT = 30
+
+# Triggers.
+TRIGGER = '!BuzzwordBingo'
+CMD_HS = TRIGGER + ' highscores'
+CMD_SCORE = TRIGGER + ' score'
+CMD_URL = TRIGGER + ' http'
+
+# Scores.
+SCOREFILE = 'score.txt'
+HIGHSCOREFILE = 'highscores.txt'
+MAX_HIGHSCORES = 5
 
 # Retrieve OAuth information.
 USERNAME = os.environ['REDDIT_USERNAME']
@@ -44,15 +51,6 @@ if DEBUG:
 buzzwords = set()
 buzzphrases = set()
 
-# Get the current minimum score, keep file open to write new values.
-scoref = open(SCOREFILE, 'r')
-try:
-    MATCHES = int(scoref.readline())
-except ValueError (err):
-    print('ERROR: ' + SCOREFILE + ' is empty or doesn\'t not exist.')
-scoref.close()
-
-# Read words and phrases, build sets for each.
 wordsf = open(WORDFILE, 'r')
 words  = wordsf.read().splitlines()
 wordsf.close()
@@ -66,6 +64,16 @@ phrasesf.close()
 for phrase in phrases:
     buzzphrases.add(phrase)
 
+# Create score file with min. value if doesn't exist.
+MATCHES = MIN_MATCHES
+scoref = open(SCOREFILE, 'r')
+try:
+    MATCHES = int(scoref.readline())
+except ValueError (err):
+    scoref = open(SCOREFILE, 'w')
+    scoref.write(str(MATCHES))
+    scoref.close()
+
 # Load high scores. If file does not exist, create one.
 highscores = []
 if os.path.isfile(HIGHSCOREFILE):
@@ -77,6 +85,7 @@ else:
     with open(HIGHSCOREFILE, 'wb') as f:
         pickle.dump(highscores, f)
 f.close()
+
 highscores.sort(key = lambda x: x[0], reverse = True)
 if DEBUG:
     for score, name in highscores:
@@ -171,10 +180,59 @@ def postReply (comment, reply):
         if DEBUG:
             print (reply)
         comment.reply(reply)
-        print ('X', end='')
         time.sleep(RATELIMIT)
-    except: praw.exceptions.APIException as err:
+    except praw.exceptions.APIException as err:
         print(err)
+
+#
+# Bingo.
+#
+
+def getMatches(text):
+    global buzzwords, buzzphrases, MATCHES
+    matches_found = set()
+
+    if DEBUG:
+        print('Text to score: \'' + text + '\'\n\n')
+
+    # Remove all punctuation from words, and convert dashes to spaces for
+    # phrases.
+    text = text.replace('\'-/', ' ').lower()
+    regex = re.compile('[%s]' % re.escape(string.punctuation))
+    words = regex.sub('', text).split()
+
+    # First seatch for buzzphrases.
+    for phrase in buzzphrases:
+        if phrase.lower() in text:
+            matches_found.add(phrase)
+
+    # Search for buzzwords that do not match phrases found.
+    matched = ' '.join(match.lower() for match in matches_found)
+    for word in buzzwords:
+        if word.lower() in words and word.lower() not in matched:
+            matches_found.add(word)
+
+    # Remove plural duplicates.
+    dupes = matches_found.copy()
+    for word in dupes:
+        matches_found.discard(word + 's')
+
+    if DEBUG:
+        print (matches_found)
+    return (matches_found)
+
+# Check if we've already replied, score text and reply.
+def playBingo (comment, text):
+
+    # Check we haven't replied already.
+    if alreadyReplied(comment):
+        return
+    matches_found = getMatches(text)
+ 
+    # Check highscores. Post reply to comment then wait out RATELIMIT.
+    updateHighscores(len(matches_found), comment.author.name)
+    reply = getReply(', '.join(matches_found), len(matches_found))
+    postReply(comment, reply)
 
 #
 # Comments.
@@ -184,16 +242,50 @@ def postReply (comment, reply):
 def checkComment (comment):
     if DEBUG:
         print('comment: ' + format(comment))
+    else:
+        print('.', end='', flush=True)
     comment.refresh()
-    print('.', end='', flush=True)
     replies = comment.replies
+
+    # Traverse comment forest (trees.)
     for reply in replies:
         subcomment = r.comment(reply)
         subcomment.refresh()
         checkComment(subcomment)
+
+    # Process various triggers if found in comment.
     if (CMD_HS in comment.body):
         getHighscores(comment)
+
+    elif (CMD_URL in comment.body):
+        regex = re.compile(TRIGGER + '\s+(http[s]*://[^\s]+)')
+        url = regex.search(comment.body).group(1)
+        if url is not None:
+            print(url)
+            with urllib.request.urlopen(url) as response:
+                html = response.read()
+            soup = bs4.BeautifulSoup(html, 'html.parser')
+            ignore_tags = ['style', 'script', '[document]', 'head', 'title']
+            [s.extract() for s in soup(ignore_tags)]
+            comment.parent.body = soup.getText()
+            # TODO: add score?
+            playBingo(comment)
+
+    elif (CMD_SCORE in comment.body):
+        print('Changing score')
+        regex = re.compile(TRIGGER + '\s+([0-9]+)\s*')
+        tempscore = regex.search(comment.body)
+        if tempscore is not None:
+            print('tempscore: ' + tempscore.group())
+            MATCHES = int(tempscore)
+            exit()
+            playBingo(comment)
+
     elif (TRIGGER in comment.body):
+        comment.refresh()
+        parent = comment.parent()
+        text = getText(parent)
+        # TODO: add score?
         playBingo(comment)
 
 # Retrieve text from a variety of possible sources: original or crosspost,
@@ -217,75 +309,21 @@ def getText (parent):
         # Try to get text from linked post in title.
         try:
             url = parent.url
-            #print('parent.url=' + url)
-            if re.match(r'http.*(redd.it|reddit.com)/.*', url):
-                regex = re.compile('^http.*/comments/([^/]+).*$')
-                linked = regex.search(url).group(1)
-                #print('linked comment: ' + linked)
-                post = r.submission(linked)
-                #print('post: ' + format(post.body))
-                #regex = re.compile('^http.*(/r/[^/]+).*$')
-                #linksub = regex.search(url).group(1)
-                #print ('linked sub: ' + linksub)
-                #newsub = r.subreddit(linksub).new()
-                #post = r.submission(newsub)
-                #com2 = r.comment(newcom)
-                text = post.body
-                #next(iter(your_list or []), None)
-                #print(text)
-                exit
+            print('parent.url=' + url)
+            # TODO: Retrieve reddit links
+            #if re.match(r'http.*(redd.it|reddit.com)/.*', url):
+            #    regex = re.compile('^http.*/comments/([^/]+).*$')
+            #    linked = regex.search(url).group(1)
+            #    print('linked comment: ' + linked)
+            #    post = r.submission(linked)
+
+            with urllib.request.urlopen(url) as response:
+                text = response.read()
+            print(text)
+            exit()
         except AttributeError:
             print ('ERROR: Not implemented yet.')
     return(text)
-
-# Check if we're already replied, if not get the text and score matches.
-def playBingo (comment):
-    global buzzwords, buzzphrases, MATCHES
-
-    # Check we haven't replied already.
-    if alreadyReplied(comment):
-        return
-    if DEBUG:
-        print('trigger: ' + format(comment))
-
-    # Retrieve parent comment or original crosspost.
-    comment.refresh()
-    parent = comment.parent()
-    text = getText(parent)
-
-    if DEBUG:
-        print('text to score: \'' + text + '\'\n\n')
-
-    # Remove all punctuation from words, and convert dashes to spaces for
-    # phrases.
-    text = text.replace('\'-/', ' ').lower()
-    regex = re.compile('[%s]' % re.escape(string.punctuation))
-    words = regex.sub('', text).split()
-
-    # First seatch for buzzphrases.
-    matches_found = set()
-    for phrase in buzzphrases:
-        if phrase.lower() in text:
-            matches_found.add(phrase)
-
-    # Search for buzzwords that do not match phrases found.
-    matched = ' '.join(match.lower() for match in matches_found)
-    for word in buzzwords:
-        if word.lower() in words and word.lower() not in matched:
-            matches_found.add(word)
-
-    # Remove plural duplicates.
-    dupes = matches_found.copy()
-    for word in dupes:
-        matches_found.discard(word + 's')
-
-    if DEBUG:
-        print (matches_found)
-
-    # Check highscores. Post reply to comment then wait out RATELIMIT.
-    updateHighscores(len(matches_found), comment.author.name)
-    reply = getReply(', '.join(matches_found), len(matches_found))
-    postReply(comment, reply)
 
 #
 # MAIN
