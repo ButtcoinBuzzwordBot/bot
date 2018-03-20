@@ -68,6 +68,7 @@ Winklevoss
 Coindesk
 Giancarlo
 wallet
+multisig
 mine
 mining
 miner
@@ -101,6 +102,9 @@ scammer
 funbux
 butter
 nocoiner
+excoiner
+altcoiner
+bitcoiner
 blockchain
 node
 PoW
@@ -139,6 +143,7 @@ trustless
 trustlessly
 mewn
 cryptospace
+cryptosphere
 Request
 REQ
 Solidity
@@ -227,3 +232,14 @@ BTG
 Rialto
 XRL
 PAT
+okex
+normies
+revolution
+hardfork
+softfork
+MIOTA
+XEM
+ZEC
+ICX
+Petro
+Bitrefill

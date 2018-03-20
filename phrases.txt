@@ -27,7 +27,6 @@ Roger Ver
 Craig Wright
 Morgan Rockwell
 Mark Karpeles
-CEO of
 Jihan Wu
 Digital Gold
 digital money
@@ -93,10 +92,13 @@ blockchain as a service
 pre sale
 crowd sale
 digital cash
+Charlie Lee
 John McAfee
 Calvin Ayre
 arise chikun
 top tier
+hard fork
+soft fork
 upcoming fork
 code is law
 software is law
@@ -104,3 +106,7 @@ do your homework
 do you own research
 bodl font
 Pangea Arbitration Token
+cant lose if you dont
+pnd group
+pnd guy
+tape painting
