@@ -243,3 +243,8 @@ ZEC
 ICX
 Petro
 Bitrefill
+dietbitcoin
+DDX
+Vertcoin
+VTC
+Basilisk

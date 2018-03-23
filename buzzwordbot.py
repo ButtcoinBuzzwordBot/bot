@@ -1,10 +1,11 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
-# TODO: Keep track of already played comments, no repeats.
+# TODO: Figure out how to save parent ID comment/submission for scored.
+# TODO: Figure out Dogecoin or something useless to award monthly winners.
 
 import os
 import time
-import re
 import string
+import re
 import pickle
 import urllib
 
@@ -12,19 +13,29 @@ import urllib
 import bs4
 import praw
 
-# Settings. When DEBUG is True the bot will only reply to posts by AUTHOR.
-# Modify these to customize the bot, along with the words and phrases files.
-# By default the AUTHOR can compete but highscores will not be registered, to
-# keep the game fair.
+#
+# SETTINGS.
+#
+
+# When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
+# to customize the bot, along with the words and phrases files. By default the
+# AUTHOR can compete but highscores will not be registered, to keep the game
+# fair.
+
 DEBUG = True
-AUTHOR = 'BarcaloungerJockey'
+AUTHOR = "BarcaloungerJockey"
 COMPETE = False
-BOTNAME = 'python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')'
-SUBREDDIT = 'buttcoin'
-WORDFILE = 'words.txt'
-PHRASEFILE = 'phrases.txt'
+BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')"
+SUBREDDIT = "buttcoin"
+WORDFILE = "words.txt"
+PHRASEFILE = "phrases.txt"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+
+# TODO: implement various approaches to hosting. text, SQL and memcache.
+#HOSTING_TYPE = "sql"
+HOSTING_TYPE = "file"
+#HOSTING_TYPE = "memcache"
 
 # Reddit account and API OAuth information. You can hardcode values here but
 # it creates a security risk if your code is public (on Github, etc.)
@@ -39,92 +50,169 @@ CLIENT_SECRET = os.environ['CLIENT_SECRET']
 RATELIMIT = 30
 
 # Triggers which active the bot to reply to a comment.
-TRIGGER = '!BuzzwordBingo'
-CMD_HS = TRIGGER + ' highscores'
-CMD_SCORE = TRIGGER + ' score'
-#TODO: remove CMD_URL = TRIGGER + ' http'
+TRIGGER = "!BuzzwordBingo"
+CMD_HS = TRIGGER + " highscores"
+CMD_SCORE = TRIGGER + " score"
+
+# History of scored comments to skip. Limit file size.
+SCOREDFILE = "scored.txt"
+MAX_SCORED = 300
 
 # Current scores and highscores.
-SCOREFILE = 'score.txt'
-HIGHSCOREFILE = 'highscores.txt'
+SCOREFILE = "score.txt"
+HIGHSCOREFILE = "highscores.txt"
 MAX_HIGHSCORES = 5
 
 # Signature for all replies.
 sig = (
-    '\n_____\n\n^(I\'m a hand-run bot, *bleep* *bloop* '
-    '| Send love, rage or doge to /u/' + AUTHOR + ', *beep*)'
+    "\n_____\n\n^(I\'m a hand-run bot, *bleep* *bloop* "
+    "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
 )
+
+ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
 
 # Highscore report reply.
-HIGHSCORES_REPLY = (
-    '**' + SUBREDDIT.title() + ' Buzzword Bingo Highscores**\n_____\n\n'
-)
+def highscoresReply (highscores):
+    reply = (
+        "**" + SUBREDDIT.title() + " Buzzword Bingo Highscores**\n_____\n\n"
+    )
+        
+    count = 1
+    for score, name in highscores:
+        reply += str(count) + '. ' + name + ': ' + str(score) + "\n"
+        count += 1
+    return(reply)
 
-# Winner reply.
+# Winning reply.
 def winnerReply (matches):
     return(
-        '**Bingo**! We have a winner with *' + len(matches) +
-        '* matches found!!\n\n**Buzzwords**: ' + ', '.join(matches)
+    "**Bingo**! We have a winner with *" + str(len(matches)) +
+        "* matches found!!\n\n**Buzzwords**: " + ", ".join(matches)
     )
 
+# Losing reply.
 def loserReply(score):
     return (
-        'Sorry bro, your hands are weak. Current score to win is **' +
-        str(score) + '** or more matches. Convert more filty fiat to '
-        'mine for comedy gold again.'
+        "Sorry bro, your hands are weak. Current score to win is **" +
+        str(score) + "** or more matches. Convert more filty fiat to "
+        "mine for comedy gold again."
     )
 
+# Link to website blocked for robots.
+def blockedReply(link):
+    return (
+        "No way, bro. Robots are blocked for: " + link
+    )
+
+#
 # END OF SETTINGS.
+#
 
-if DEBUG:
-    SUBREDDIT = 'testingground4bots'
-    print ('Username/pass: ' + USERNAME, PASSWORD)
-    print ('Client ID/pass: ' + CLIENT_ID, CLIENT_SECRET)
+#
+# Datastores.
+#
 
-# Read words and phrases, build sets of each.
-buzzwords = set()
-buzzphrases = set()
+#HOSTING_TYPE = 'sql'
+#HOSTING_TYPE = 'file'
+#HOSTING_TYPE = 'memcache'
 
-wordsf = open(WORDFILE, 'r')
-words  = wordsf.read().splitlines()
-wordsf.close()
-for word in words:
-    buzzwords.add(word)
-    buzzwords.add(word + 's')
+def readData(handle):
+    global HOSTING_TYPE
 
-phrasesf = open(PHRASEFILE, 'r')
-phrases = phrasesf.read().splitlines()
-phrasesf.close()
-for phrase in phrases:
-    buzzphrases.add(phrase)
+    if HOSTING_TYPE is "file":
+        try:
+            dataf = open(handle, 'r')
+        except:
+            print("ERROR: File " + handle + "does not exist.")
+            exit()
+        words  = dataf.read().splitlines()
+        dataf.close()
+        return(words)
+    else:
+        print("Not implemented yet.")
+        exit()
 
-# Create score file with min. value if doesn't exist.
-MATCHES = MIN_MATCHES
-scoref = open(SCOREFILE, 'r')
-try:
-    MATCHES = int(scoref.readline())
-except ValueError (err):
-    scoref = open(SCOREFILE, 'w')
-    scoref.write(str(MATCHES))
-scoref.close()
+def readScore():
+    global MIN_MATCHES, SCOREFILE, HOSTING_TYPE
+    
+    if HOSTING_TYPE is "file":
+        try:
+            scoref = open(SCOREFILE, "r")
+            score = int(scoref.readline())
+        except FileNotFoundError:
+            scoref = open(SCOREFILE, 'w')
+            score = MIN_MATCHES
+            scoref.write(str(score))
+        scoref.close()
+        return(score)
+    else:
+        print("Not implemented yet.")
+        exit()
 
-# Load high scores. If file does not exist, create one.
-highscores = []
-if os.path.isfile(HIGHSCOREFILE):
-    with open(HIGHSCOREFILE, 'rb') as f:
-        highscores = pickle.load(f)
-else:
-    for i in range (0,3):
-        highscores.append([i + 1, '/u/' + AUTHOR])
-    with open(HIGHSCOREFILE, 'wb') as f:
-        pickle.dump(highscores, f)
-f.close()
+def writeScore(score):
+    global SCOREFILE, HOSTING_TYPE
 
-# Sort scores from high to low.
-highscores.sort(key = lambda x: x[0], reverse = True)
-if DEBUG:
-    for score, name in highscores:
-        print('Name: ' + name + ' got ' + str(score))
+    if HOSTING_TYPE is "file":
+        try:
+            scoref = open(SCOREFILE, 'w')
+            scoref.write(str(MATCHES))
+        except:
+            print("ERROR: Can't write " + SCOREFILE)
+        scoref.close()
+    else:
+        print("Not implemented yet.")
+        exit()
+
+def readScored():
+    global SCOREDFILE, HOSTING_TYPE, admissions_scored
+
+    if HOSTING_TYPE is "file":
+        try:
+            # TODO: close file not?
+            scoredf = open(SCOREDFILE, "r+")
+            scored = scoredf.readline().splitlines()
+        except FileNotFoundError:
+            scoredf = open(SCOREDFILE, "w")
+            scored = []
+            print("No comments scored yet.")
+        already_scored = scored
+        return(scoredf)
+     else:
+        print("Not implemented yet.")
+        exit()
+
+def readHighscores():
+    global HIGHSCOREFILE, HOSTING_TYPE
+
+    highscores = []
+    if HOSTING_TYPE is "file":
+        if os.path.isfile(HIGHSCOREFILE):
+            with open(HIGHSCOREFILE, 'rb') as f:
+                highscores = pickle.load(f)
+        else:
+            for i in range (0,3):
+                highscores.append([i + 1, '/u/' + AUTHOR])
+            with open(HIGHSCOREFILE, 'wb') as f:
+                pickle.dump(highscores, f)
+        f.close()
+    else:
+        print("Not implemented yet.")
+        exit()
+    return(highscores)
+
+def writeHighscores(handle):
+    global highscores, HOSTING_TYPE
+
+    if HOSTING_TYPE is "file":
+        try:
+            with open(handle, 'wb') as f:
+                pickle.dump(highscores, f)
+        except:
+            print("ERROR: Cannot write to " + handle)
+        f.close()
+    else:
+        print("Not implemented yet.")
+        exit()
 
 #
 # Highscores
@@ -132,7 +220,7 @@ if DEBUG:
 
 # Check for a new highscore. Replace lowest since they're always sorted.
 def updateHighscores (score, name):
-    global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES
+    global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORESFILE
 
     # Don't score the author for testing or no compete flag.
     if (name == AUTHOR) and not COMPETE:
@@ -146,44 +234,60 @@ def updateHighscores (score, name):
 
     # Resort high to low and save.
     highscores.sort(key = lambda x: x[0], reverse = True)
-    with open(HIGHSCOREFILE, 'wb') as f:
-        pickle.dump(highscores, f)
-    f.close()
-
-# Retrieve highscores for reply.
-def getHighscores(comment):
-    global HIGHSCORE_REPLY, highscores
-
-    if alreadyReplied(comment):
-        return
-
-    count = 1
-    for score, name in highscores:
-        reply += str(count) + '. ' + name + ': ' + str(score) + '\n'
-        count += 1
-    postReply(comment, HIGHSCORE_REPLY)
+    writeHighscores(HIGHSCOREFILE)
 
 #
 # Replies
 #
 
 # Check to see if a comment has been replied to already to avoid duplicates.
-def alreadyReplied (comment):
-    global USERNAME
+
+def alreadyScored(post):
+    global USERNAME, submissions_scored, comments_scored
+
+    # Basic check of replies to avoid duplicates. Redundant but safe if the
+    # data is erased, corrupted, etc.
+
+    # TODO: need to save Submission or Comment ID based on type.
+
+    if type(post) is praw.models.Submission:
+        if (post.id) in submissions_scored:
+            if DEBUG:
+                print ("Submission already scored, skipping.")
+            # TODO: Sorry reply?
+            return True
+    elif type(post):
+        if (post.id) in comments_scored:
+            if DEBUG:
+                print ("Comment already scored, skipping.")
+            # TODO: sorry reply
+            print("Comment: " + post.id)
+            print(vars(post))
+            exit()
+            return True
+    else:
+        print ("Unknown post type, exiting.")
+        exit()
 
     replies = comment.replies
     for reply in replies:
         if (r.comment(reply).author.name == USERNAME):
             if DEBUG:
-                print ("Replied already, movin' on.")
+                print ("Skipping author\'s post.")
             return True
+
+    # Check marked comments and skip those already scored.
+    if str(comment.id) in comments_scored:
+        if DEBUG:
+            print ("Already scored, skipping.")
+        return True
     return False
 
 # Creates a standard reply for wins/losses, and updates minimum score required.
 def getReply (matches):
     global MATCHES
 
-    if score >= MATCHES:
+    if len(matches) >= MATCHES:
         reply = winnerReply(matches)
     else:
         reply = loserReply(MATCHES)
@@ -195,29 +299,41 @@ def getReply (matches):
     else:
         if MATCHES > MIN_MATCHES:
             MATCHES -= 1
+    writeScore(MATCHES)
 
-    # Be lazy and always write, changed or not.
-    scoref = open(SCOREFILE, 'w')
-    scoref.write(str(MATCHES))
-    scoref.close()
-    return (reply)
-
-def weHateRobots():
-    return ('*borp*, I did my best, but that website doesn\'t allow robots. *blap*')
-
-def postReply (comment, reply):
-    global RATELIMIT, sig
+# Add the post to list of scored, post reply.
+# TODO
+def postReply (post, reply):
+    global RATELIMIT, sig, already_scored, submissions_scored, comments_scored, scoredf
 
     if DEBUG:
         print (reply)
     else:
-        print ('X', end='')
+        print ("X", end='')
+
+    # Mark post as scored in datastore, trim as needed.
+    if type(post) is praw.models.Submission:
+        entry = "sub " + str(post.id)
+        submissions_scored.append(entry)
+    else:
+        entry = str(post.id)
+        comments_scored.append(entry)
+    already_scored.append(entry)
+
+    length = len(already_scored)
+    if length > MAX_SCORED:
+        already_scored = already_scored[length - MAX_SCORED, length]
+    try:
+        scoredf.writelines("\n".join(already_scored))
+    except:
+        print ("ERROR: Cannot write to " + SCOREDFILE)
+        exit()
 
     try:
         comment.reply(reply + sig)
-        time.sleep(RATELIMIT)
     except praw.exceptions.APIException as err:
         print(err)
+    time.sleep(RATELIMIT)
 
 #
 # Bingo.
@@ -229,9 +345,9 @@ def getMatches(text):
 
     # Remove all punctuation from words, and convert dashes to spaces for
     # phrases.
-    text = text.replace('\'-/', ' ').lower()
-    regex = re.compile('[%s]' % re.escape(string.punctuation))
-    words = regex.sub('', text).split()
+    text = text.replace("\'-/", " ").lower()
+    regex = re.compile("[%s]" % re.escape(string.punctuation))
+    words = regex.sub("", text).split()
 
     # First seatch for buzzphrases.
     for phrase in buzzphrases:
@@ -239,7 +355,7 @@ def getMatches(text):
             matches_found.add(phrase)
 
     # Search for buzzwords that do not match phrases found.
-    matched = ' '.join(match.lower() for match in matches_found)
+    matched = " ".join(match.lower() for match in matches_found)
     for word in buzzwords:
         if word.lower() in words and word.lower() not in matched:
             matches_found.add(word)
@@ -255,10 +371,6 @@ def getMatches(text):
 
 # Check if we've already replied, score text and reply.
 def playBingo (comment, text):
-
-    # Check we haven't replied already.
-    if alreadyReplied(comment):
-        return
     matches_found = getMatches(text)
 
     # Check highscores. Post reply to comment then wait out RATELIMIT.
@@ -285,36 +397,39 @@ def getText (parent):
             try:
                 text = parent.crosspost_parent_list[0]['selftext']
             except AttributeError:
-                print ('ERROR: Unsupported or broken post reference.')
+                print ("ERROR: Unsupported or broken post reference.")
                 
     if text is None or text is '':
         # Try to get text from linked post in title.
         try:
-            #url = parent.url
-            #print('parent.url=' + url)
-            # TODO: Retrieve reddit links
-            #if re.match(r'http.*(redd.it|reddit.com)/.*', url):
-            #    regex = re.compile('^http.*/comments/([^/]+).*$')
-            #    linked = regex.search(url).group(1)
-            #    print('linked comment: ' + linked)
-            #    post = r.submission(linked)
-
-            #with urllib.request.urlopen(url) as response:
-            #    text = response.read()
-            #print(text)
-            exit()
+            # TODO: Code to scrape pages from title link.
+            url = parent.url
+            regex = re.compile('^(http[s]*://[^\s]+)')
+            link = regex.search(comment.body).group(1)
+            ignore_tags = ['style', 'script', '[document]', 'head', 'title']
+            if link is not None:
+                try:
+                    with urllib.request.urlopen(link) as response:
+                        html = response.read()
+                        soup = bs4.BeautifulSoup(html, 'html.parser')
+                    text = [s.extract() for s in soup(ignore_tags)]
+                except urllib.error.HTTPError:
+                    postReply(comment, blockedReply(link))
+            else:
+                print("Empty link, this shouldn't happen.")
+                exit()
         except AttributeError:
-            print ('ERROR: Not implemented yet.')
+            print ("ERROR: Not implemented yet, skipping.")
     return(text)
 
 # Check a comment or post for the invocation keyword.
 def checkComment (comment):
-    global MATCHES
+    global MATCHES, highscores
     
     if DEBUG:
-        print('comment: ' + format(comment))
+        print("comment: " + format(comment))
     else:
-        print('.', end='', flush=True)
+        print(".", end='', flush=True)
     comment.refresh()
     replies = comment.replies
 
@@ -326,42 +441,67 @@ def checkComment (comment):
 
     # Process various triggers if found in comment.
     if (CMD_HS in comment.body):
-        getHighscores(comment)
-
-    elif (CMD_URL in comment.body):
-        # TODO: Remove this command, move code to scrape pages from title link.
-        regex = re.compile(TRIGGER + '\s+(http[s]*://[^\s]+)')
-        url = regex.search(comment.body).group(1)
-        if url is not None:
-            #print(url)
-            try:
-                with urllib.request.urlopen(url) as response:
-                    html = response.read()
-                soup = bs4.BeautifulSoup(html, 'html.parser')
-                ignore_tags = ['style', 'script', '[document]', 'head', 'title']
-                [s.extract() for s in soup(ignore_tags)]
-                playBingo(comment, 'this function is off for now, *beep*' + sig)
-            except urllib.error.HTTPError:
-                postReply(comment, weHateRobots())
+        if alreadyScored(comment):
+            return
+        postReply(comment, highscoresReply(highscores))
 
     elif (TRIGGER in comment.body):
         if CMD_SCORE in comment.body:
             regex = re.compile(CMD_SCORE + '\s+([0-9]+)\s*')
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
-                print('tempscore: ' + tempscore)
+                print("tempscore: " + tempscore)
                 MATCHES = int(tempscore)
 
+        # Score the parent comment.
         comment.refresh()
         parent = comment.parent()
+        if alreadyScored(parent):
+            print("Already scored.")
+            postReply(comment)
+            return
+
         # Do not allow player to score their own post, unless it's testing.
-        if not (comment.author == parent.author and
+        elif not (comment.author == parent.author.name and
                 comment.author.name != AUTHOR):
             playBingo(comment, getText(parent))
 
 #
-# MAIN
+# MAIN TODO: cleanup
 #
+
+if DEBUG:
+    SUBREDDIT = 'testingground4bots'
+    print ("Username/pass: " + USERNAME, PASSWORD)
+    print ("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
+
+# Read words and phrases, build sets of each.
+buzzwords = set()
+buzzphrases = set()
+
+for word in readData(WORDFILE):
+    buzzwords.add(word)
+    buzzwords.add(word + 's')
+
+for phrase in readData(PHRASEFILE):
+    buzzphrases.add(phrase)
+
+# Will create score file with min. value if doesn't exist.
+MATCHES = readScore()
+
+# File to track comments already scored to prevent repeats and multiple plays.
+# Leave open to write new entries.
+# TODO: leave open? no?
+submissions_scored = []
+comments_scored = []
+scoredf = readScored()
+
+# Load high scores. If file does not exist, create one.
+highscores = readHighscores()
+highscores.sort(key = lambda x: x[0], reverse = True)
+if DEBUG:
+    for score, name in highscores:
+        print("Name: " + name + " got " + str(score))
 
 # Initialize PRAW with custom User-Agent.
 if DEBUG:
@@ -374,7 +514,7 @@ r = praw.Reddit(
     username=USERNAME
 )
 if DEBUG:
-    print ('Authenticated as: ' + format(r.user.me()))
+    print ("Authenticated as: " + format(r.user.me()))
 
 # 1. Don't reply to the same request more than once.
 # 2. Don't hit the same page more than once per 30 seconds.
@@ -389,3 +529,5 @@ for submission in sub:
             print (AUTHOR + " didn't post it, skipping.")
             break
         checkComment(comment)
+
+scoredf.close()
