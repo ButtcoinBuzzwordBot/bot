@@ -164,7 +164,7 @@ def writeScore(score):
         exit()
 
 def readScored():
-    global SCOREDFILE, HOSTING_TYPE, admissions_scored
+    global SCOREDFILE, HOSTING_TYPE, already_scored
 
     if HOSTING_TYPE is "file":
         try:
@@ -177,7 +177,7 @@ def readScored():
             print("No comments scored yet.")
         already_scored = scored
         return(scoredf)
-     else:
+    else:
         print("Not implemented yet.")
         exit()
 
@@ -243,15 +243,16 @@ def updateHighscores (score, name):
 # Check to see if a comment has been replied to already to avoid duplicates.
 
 def alreadyScored(post):
-    global USERNAME, submissions_scored, comments_scored
+    global USERNAME, already_scored
 
     # Basic check of replies to avoid duplicates. Redundant but safe if the
     # data is erased, corrupted, etc.
 
-    # TODO: need to save Submission or Comment ID based on type.
+    # TODO: change from list to set to avoid dupes, find why multiple writes
+    # are happening, some w/o newlines.
 
     if type(post) is praw.models.Submission:
-        if (post.id) in submissions_scored:
+        if ("sub " + str(post.id)) in already_scored:
             if DEBUG:
                 print ("Submission already scored, skipping.")
             # TODO: Sorry reply?
@@ -300,6 +301,7 @@ def getReply (matches):
         if MATCHES > MIN_MATCHES:
             MATCHES -= 1
     writeScore(MATCHES)
+    return (reply)
 
 # Add the post to list of scored, post reply.
 # TODO
@@ -324,13 +326,14 @@ def postReply (post, reply):
     if length > MAX_SCORED:
         already_scored = already_scored[length - MAX_SCORED, length]
     try:
-        scoredf.writelines("\n".join(already_scored))
+        # TODO: make sure file is rewritten? appended to? ends w/newline.
+        scoredf.writelines("\n".join(already_scored + "\n"))
     except:
         print ("ERROR: Cannot write to " + SCOREDFILE)
         exit()
 
     try:
-        comment.reply(reply + sig)
+        post.reply(reply + sig)
     except praw.exceptions.APIException as err:
         print(err)
     time.sleep(RATELIMIT)
@@ -458,7 +461,7 @@ def checkComment (comment):
         parent = comment.parent()
         if alreadyScored(parent):
             print("Already scored.")
-            postReply(comment)
+            postReply(comment, ALREADY_SCORED)
             return
 
         # Do not allow player to score their own post, unless it's testing.
