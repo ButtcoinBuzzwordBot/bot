@@ -26,11 +26,6 @@ if HOSTING_TYPE is "file":
 elif HOSTING_TYPE is "sqlite":
     import sqlite3
     DATABASE = "buzzword.db"
-    SCORETABLE = "score"
-    WORDTABLE = "words"
-    PHRASETABLE = "phrases"
-    SCOREDTABLE = "scored"
-    HIGHSCORETABLE = "highscores"
 else:
     print("ERROR: hosting type not implemented.")
     exit()
@@ -43,7 +38,7 @@ else:
 DEBUG = False
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
-BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')"
+BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
 SUBREDDIT = "buttcoin"
 SCORESTORE = "score"
 MIN_MATCHES = 4
@@ -93,7 +88,7 @@ def highscoresReply (highscores):
         
     count = 1
     for score, name in highscores:
-        reply += str(count) + '. ' + name + ': ' + str(score) + "\n"
+        reply += str(count) + ". " + name + ": " + str(score) + "\n"
         count += 1
     return(reply)
 
@@ -128,57 +123,62 @@ def blockedReply(link):
 
 #HOSTING_TYPE = "sqlite", "file", "memcache"
 
-if HOSTING_TYPE is "sqlite":
+if HOSTING_TYPE is "file":
+    store = "file"
+elif HOSTING_TYPE is "sqlite":
     try:
-        db = sqlite3.connect(DATABASE)
+        store = sqlite3.connect(DATABASE)
     except sqlite3.Error (err):
         print("ERROR: Cannot create or connect to " + DATABASE)
         exit()
-    
-def create_connection(db_file):
-    """ create a database connection to a SQLite database """
-    try:
-        conn = sqlite3.connect(db_file)
-        print(sqlite3.version)
-    except Error as e:
-        print(e)
-    finally:
-        conn.close()
+else:
+    print("Hosting type not implemented yet.")
+    exit()
 
-def readData(handle):
-    global HOSTING_TYPE
+def readData(**kwargs):
+    """ Reads words or phrases data. """
 
-    if HOSTING_TYPE is "file":
+    if kwargs[0] is "file":
+        name = kwargs[1] + ".txt"
         try:
-            dataf = open(handle, 'r')
+            dataf = open(kwargs[name, "r"))
         except:
-            print("ERROR: File " + handle + "does not exist.")
+            print("ERROR: File " + name + " does not exist.")
             exit()
         words  = dataf.read().splitlines()
         dataf.close()
         return(words)
+    elif type(kwargs[0]) is sqlite3.Connection:
+        try:
+            cur = store.cursor()
+            cur.execute("SELECT * FROM " + kwargs[1])
+            return(cur.fetchall())
+        except sqlite3.Error (err):
+            print("ERROR: Cannot retrieve " + kwargs[1] + "s from db.")
+            exit()
     else:
-        print("Not implemented yet.")
+        print("Store type not implemented yet.")
         exit()
 
-def readScore(store, name):
+def readScore(**kwargs):
     """ Returns the current score to win. """
     global MIN_MATCHES
 
-    if store is "file":
+    if kwargs[0] is "file":
+        name = kwargs[1] + ".txt"
         try:
-            scoref = open(name + ".txt", "r")
+            scoref = open(name, "r")
             score = int(scoref.readline())
         except FileNotFoundError:
-            scoref = open(name + ".txt", 'w')
+            scoref = open(name, "w")
             score = MIN_MATCHES
             scoref.write(str(score))
         scoref.close()
         return(score)
-    elif store is "sqlite":
+    elif type(kwargs[0]) is sqlite3.Connection:
         try:
             cur = store.cursor()
-            cur.execute("SELECT score  FROM " + name)
+            cur.execute("SELECT score FROM " + kwargs[1])
             return(int(cur.fetchall()))
         except sqlite3.Error (err):
             print("ERROR: Cannot retrieve score from db.")
@@ -187,20 +187,22 @@ def readScore(store, name):
         print("Store type not implemented yet.")
         exit()
 
-def writeScore(store, name, score):
+def writeScore(**kwargs):
     """ Saves the current score to win. """
 
-    if store is "file":
+    score = str(kwargs[2])
+    if kwargs[0] is "file":
+        name = kwargs[1] + ".txt"
         try:
-            scoref = open(name + ".txt", 'w')
-            scoref.write(str(score))
+            scoref = open(name, "w")
+            scoref.write(score)
         except:
-            print("ERROR: Can't write " + name + ".txt")
+            print("ERROR: Can't write " + name)
         scoref.close()
-    elif store is "sqlite":
+    elif type(store) is sqlite3.Connection:
         try:
             cur = store.cursor()
-            cur.execute("UPDATE " + name + " SET score=" + str(score))
+            cur.execute("UPDATE " + kwargs[1] + " SET score=" + score)
         except sqlite3.Error (err):
             print("ERROR: Cannot update score in db.")
             exit()
@@ -208,37 +210,64 @@ def writeScore(store, name, score):
         print("Store type not implemented yet.")
         exit()
 
-def readScored():
-    global SCOREDFILE, HOSTING_TYPE
+def readScored(**kwargs):
+    """ Reads list of posts already scored/replied to. """
 
-    if HOSTING_TYPE is "file":
+    if kwargs[0] is "file":
+        name = kwargs[1] + ".txt"
         try:
-            scoredf = open(SCOREDFILE, "r")
+            scoredf = open(name, "r")
             scored = scoredf.read().splitlines()
         except FileNotFoundError:
-            scoredf = open(SCOREDFILE, "w")
+            scoredf = open(name, "w")
             scored = []
-            print("No comments scored yet.")
+            if DEBUG:
+                print("No comments scored yet.")
         scoredf.close()
         return(scored)
+    elif type(kwargs[0]) is sqlite3.Connection:
+        try:
+            cur = store.cursor()
+            cur.execute("SELECT * FROM " + kwargs[1])
+            return(cur.fetchall())
+        except sqlite3.Error (err):
+            print("ERROR: Cannot read scored comments from " + kwargs[1])
+            exit()
     else:
-        print("Not implemented yet.")
+        print("Store type not implemented yet.")
         exit()
 
-def writeScored():
-    global SCOREDFILE, HOSTING_TYPE, MAX_SCORED, already_scored
+def writeScored(**kwargs):
+    """ Saves list of posts already scored/replied to. """
+    
+    global already_scored
 
-    if HOSTING_TYPE is "file":
-        length = len(already_scored)
-        if length > MAX_SCORED:
-            already_scored = already_scored[length - MAX_SCORED, length]
+    maxscored = kwargs[2]
+    length = len(already_scored)
+    if length > maxscored:
+        already_scored = already_scored[length - maxscored, length]
+
+    if kwargs[0] is "file":
+        name = kwargs[1] + ".txt"
         try:
-            scoredf = open(SCOREDFILE, "w")
+            scoredf = open(name, "w")
         except:
-            print("ERROR: Cannot write to " + SCOREDFILE)
+            print("ERROR: Cannot write to " + name)
             exit()
         scoredf.writelines(("\n".join(already_scored)) + "\n")
         scoredf.close()
+    elif type(kwargs[0]) is sqlite3.Connection:
+        try:
+            cur = store.cursor()
+            cur.execute("DELETE * FROM " + kwargs[1])
+            cur.execute("INSERT INTO " + kwargs[1] + " VALUES (?)", already_scored)
+            return
+        except sqlite3.Error (err):
+            print("ERROR: Cannot write scored comments to " + kwargs[1])
+            exit()
+    else:
+        print("Store type not implemented yet.")
+        exit()
 
 def readHighscores():
     global HIGHSCOREFILE, HOSTING_TYPE
@@ -246,12 +275,12 @@ def readHighscores():
     highscores = []
     if HOSTING_TYPE is "file":
         if os.path.isfile(HIGHSCOREFILE):
-            with open(HIGHSCOREFILE, 'rb') as f:
+            with open(HIGHSCOREFILE, "rb") as f:
                 highscores = pickle.load(f)
         else:
             for i in range (0,3):
-                highscores.append([i + 1, '/u/' + AUTHOR])
-            with open(HIGHSCOREFILE, 'wb') as f:
+                highscores.append([i + 1, "/u/" + AUTHOR])
+            with open(HIGHSCOREFILE, "wb") as f:
                 pickle.dump(highscores, f)
         f.close()
     else:
@@ -264,7 +293,7 @@ def writeHighscores(handle):
 
     if HOSTING_TYPE is "file":
         try:
-            with open(handle, 'wb') as f:
+            with open(handle, "wb") as f:
                 pickle.dump(highscores, f)
         except:
             print("ERROR: Cannot write to " + handle)
@@ -278,8 +307,10 @@ def writeHighscores(handle):
 #
 
 def updateHighscores (score, name):
-    """ Check for a new highscore. Replace lowest since they're always
-    sorted. """
+    """
+    Check for a new highscore. Replace lowest since they're always sorted.
+    """
+
     global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORESFILE
 
     # Don't score the author for testing or no compete flag.
@@ -287,10 +318,10 @@ def updateHighscores (score, name):
         return
 
     if len(highscores) < MAX_HIGHSCORES:
-        highscores.append([score, '/u/' + name])
+        highscores.append([score, "/u/" + name])
     elif score > highscores[MAX_HIGHSCORES - 1][0]:
         # Check for duplicate entries.
-        highscores[MAX_HIGHSCORES - 1] = [score, '/u/' + name]
+        highscores[MAX_HIGHSCORES - 1] = [score, "/u/" + name]
 
     # Resort high to low and save.
     highscores.sort(key = lambda x: x[0], reverse = True)
@@ -356,7 +387,7 @@ def getReply (matches):
     else:
         if MATCHES > MIN_MATCHES:
             MATCHES -= 1
-    writeScore(MATCHES)
+    writeScore(HOSTING_TYPE, SCORE_STORE, MATCHES)
     return (reply)
 
 # Add the post to list of scored, post reply.
@@ -366,7 +397,7 @@ def postReply (post, reply):
     if DEBUG:
         print(reply)
     else:
-        print("X", end='')
+        print("X", end="")
 
     markScored(post)
     newcomment = None
@@ -403,7 +434,7 @@ def getMatches(text):
     # Remove plural duplicates.
     dupes = matches_found.copy()
     for word in dupes:
-        matches_found.discard(word + 's')
+        matches_found.discard(word + "s")
     return (matches_found)
 
 # Check if we've already replied, score text and reply.
@@ -436,19 +467,18 @@ def getText (parent):
             except AttributeError:
                 print("ERROR: Unsupported or broken post reference.")
                 
-    if text is None or text is '':
+    if text is None or text is "":
         # Try to get text from linked post in title.
         try:
             # TODO: Code to scrape pages from title link.
             url = parent.url
-            regex = re.compile('^(http[s]*://[^\s]+)')
-            link = regex.search(comment.body).group(1)
-            ignore_tags = ['style', 'script', '[document]', 'head', 'title']
+            regex = re.compile("^(http[s]*://[^\s]+)")
+            ignore_tags = ["style", "script", "[document]", "head", "title"]
             if link is not None:
                 try:
                     with urllib.request.urlopen(link) as response:
                         html = response.read()
-                        soup = bs4.BeautifulSoup(html, 'html.parser')
+                        soup = bs4.BeautifulSoup(html, "html.parser")
                     text = [s.extract() for s in soup(ignore_tags)]
                 except urllib.error.HTTPError:
                     postReply(comment, blockedReply(link))
@@ -466,7 +496,7 @@ def checkComment (comment):
     if DEBUG:
         print("comment: " + format(comment))
     else:
-        print(".", end='', flush=True)
+        print(".", end="", flush=True)
     comment.refresh()
     replies = comment.replies
 
@@ -484,7 +514,7 @@ def checkComment (comment):
 
     elif (TRIGGER in comment.body):
         if CMD_SCORE in comment.body:
-            regex = re.compile(CMD_SCORE + '\s+([0-9]+)\s*')
+            regex = re.compile(CMD_SCORE + "\s+([0-9]+)\s*")
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
                 MATCHES = int(tempscore)
@@ -507,7 +537,7 @@ def checkComment (comment):
 #
 
 if DEBUG:
-    SUBREDDIT = 'testingground4bots'
+    SUBREDDIT = "testingground4bots"
     print("Username/pass: " + USERNAME, PASSWORD)
     print("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
 
@@ -515,18 +545,18 @@ if DEBUG:
 buzzwords = set()
 buzzphrases = set()
 
-for word in readData(WORD_STORE):
+for word in readData(store, WORD_STORE):
     buzzwords.add(word)
-    buzzwords.add(word + 's')
+    buzzwords.add(word + "s")
 
-for phrase in readData(PHRASE_STORE):
+for phrase in readData(store, PHRASE_STORE):
     buzzphrases.add(phrase)
 
 # Will create score file with min. value if doesn't exist.
-MATCHES = readScore(HOSTING_TYPE, SCORE_STORE)
+MATCHES = readScore(SCORE_STORE)
 
 # Get comments already scored to prevent repeats and multiple plays.
-already_scored = readScored()
+already_scored = readScored(SCORED_STORE)
 
 # Load high scores. If file does not exist, create one.
 highscores = readHighscores()
@@ -563,3 +593,6 @@ for submission in sub:
 
     # Write list of scored comments after each submission.
     writeScored()
+
+if HOSTING_TYPE is "sqlite":
+    store.close()
