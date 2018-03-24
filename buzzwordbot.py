@@ -15,10 +15,23 @@ import urllib
 # SETTINGS.
 #
 
+# When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
+# to customize the bot, along with the words and phrases files. By default the
+# AUTHOR can compete but highscores will not be registered, to keep the game
+# fair.
+
+DEBUG = True
+AUTHOR = "BarcaloungerJockey"
+COMPETE = False
+BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
+SUBREDDIT = "buttcoin"
+SCORE_STORE = "score"
+MIN_MATCHES = 4
+MAX_MATCHES = 12
+
 # TODO: implement various approaches to hosting. text, SQL and memcache.
 #HOSTING_TYPE = "sqlite"
 HOSTING_TYPE = "file"
-#HOSTING_TYPE = "memcache"
 
 # Import libs and set store names based on hosting type.
 if HOSTING_TYPE is "file":
@@ -29,20 +42,6 @@ elif HOSTING_TYPE is "sqlite":
 else:
     print("ERROR: hosting type not implemented.")
     exit()
-
-# When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
-# to customize the bot, along with the words and phrases files. By default the
-# AUTHOR can compete but highscores will not be registered, to keep the game
-# fair.
-
-DEBUG = False
-AUTHOR = "BarcaloungerJockey"
-COMPETE = False
-BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
-SUBREDDIT = "buttcoin"
-SCORE_STORE = "score"
-MIN_MATCHES = 4
-MAX_MATCHES = 12
 
 WORD_STORE = "words"
 PHRASE_STORE = "phrases"
