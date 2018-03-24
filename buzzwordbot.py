@@ -5,39 +5,52 @@ import os
 import time
 import string
 import re
-import pickle
-import urllib
 
 # Packages must be installed.
 import bs4
 import praw
+import urllib
 
 #
 # SETTINGS.
 #
+
+# TODO: implement various approaches to hosting. text, SQL and memcache.
+#HOSTING_TYPE = "sqlite"
+HOSTING_TYPE = "file"
+#HOSTING_TYPE = "memcache"
+
+# Import libs and set store names based on hosting type.
+if HOSTING_TYPE is "file":
+    import pickle
+elif HOSTING_TYPE is "sqlite":
+    import sqlite3
+    DATABASE = "buzzword.db"
+    SCORETABLE = "score"
+    WORDTABLE = "words"
+    PHRASETABLE = "phrases"
+    SCOREDTABLE = "scored"
+    HIGHSCORETABLE = "highscores"
+else:
+    print("ERROR: hosting type not implemented.")
+    exit()
 
 # When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
 # to customize the bot, along with the words and phrases files. By default the
 # AUTHOR can compete but highscores will not be registered, to keep the game
 # fair.
 
-DEBUG = True
+DEBUG = False
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')"
 SUBREDDIT = "buttcoin"
-SCOREFILE = "score.txt"
+SCORESTORE = "score"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
 
-# Store the words and phrases to match for bingo, one per line.
-WORDFILE = "words.txt"
-PHRASEFILE = "phrases.txt"
-
-# TODO: implement various approaches to hosting. text, SQL and memcache.
-#HOSTING_TYPE = "sqlite"
-HOSTING_TYPE = "file"
-#HOSTING_TYPE = "memcache"
+WORDSTORE = "words"
+PHRASESTORE = "phrases"
 
 # Reddit account and API OAuth information. You can hardcode values here but
 # it creates a security risk if your code is public (on Github, etc.)
@@ -58,11 +71,11 @@ CMD_SCORE = TRIGGER + " score"
 
 # Limit of scored comments saved to skip.
 MAX_SCORED = 300
-SCOREDFILE = "scored.txt"
+SCOREDSTORE = "scored"
 
 # Number of highscores.
 MAX_HIGHSCORES = 5
-HIGHSCOREFILE = "highscores.txt"
+HIGHSCORESTORE = "highscores"
 
 # Signature for all replies.
 sig = (
@@ -110,12 +123,27 @@ def blockedReply(link):
 #
 
 #
-# Datastores.
+# Datastores. TODO: split this off into a separate script.
 #
 
-#HOSTING_TYPE = 'sqlite'
-#HOSTING_TYPE = 'file'
-#HOSTING_TYPE = 'memcache'
+#HOSTING_TYPE = "sqlite", "file", "memcache"
+
+if HOSTING_TYPE is "sqlite":
+    try:
+        db = sqlite3.connect(DATABASE)
+    except sqlite3.Error (err):
+        print("ERROR: Cannot create or connect to " + DATABASE)
+        exit()
+    
+def create_connection(db_file):
+    """ create a database connection to a SQLite database """
+    try:
+        conn = sqlite3.connect(db_file)
+        print(sqlite3.version)
+    except Error as e:
+        print(e)
+    finally:
+        conn.close()
 
 def readData(handle):
     global HOSTING_TYPE
@@ -133,35 +161,51 @@ def readData(handle):
         print("Not implemented yet.")
         exit()
 
-def readScore():
-    global MIN_MATCHES, SCOREFILE, HOSTING_TYPE
-    
-    if HOSTING_TYPE is "file":
+def readScore(store, name):
+    """ Returns the current score to win. """
+    global MIN_MATCHES
+
+    if store is "file":
         try:
-            scoref = open(SCOREFILE, "r")
+            scoref = open(name + ".txt", "r")
             score = int(scoref.readline())
         except FileNotFoundError:
-            scoref = open(SCOREFILE, 'w')
+            scoref = open(name + ".txt", 'w')
             score = MIN_MATCHES
             scoref.write(str(score))
         scoref.close()
         return(score)
+    elif store is "sqlite":
+        try:
+            cur = store.cursor()
+            cur.execute("SELECT score  FROM " + name)
+            return(int(cur.fetchall()))
+        except sqlite3.Error (err):
+            print("ERROR: Cannot retrieve score from db.")
+            exit()
     else:
-        print("Not implemented yet.")
+        print("Store type not implemented yet.")
         exit()
 
-def writeScore(score):
-    global SCOREFILE, HOSTING_TYPE
+def writeScore(store, name, score):
+    """ Saves the current score to win. """
 
-    if HOSTING_TYPE is "file":
+    if store is "file":
         try:
-            scoref = open(SCOREFILE, 'w')
+            scoref = open(name + ".txt", 'w')
             scoref.write(str(score))
         except:
-            print("ERROR: Can't write " + SCOREFILE)
+            print("ERROR: Can't write " + name + ".txt")
         scoref.close()
+    elif store is "sqlite":
+        try:
+            cur = store.cursor()
+            cur.execute("UPDATE " + name + " SET score=" + str(score))
+        except sqlite3.Error (err):
+            print("ERROR: Cannot update score in db.")
+            exit()
     else:
-        print("Not implemented yet.")
+        print("Store type not implemented yet.")
         exit()
 
 def readScored():
@@ -233,8 +277,9 @@ def writeHighscores(handle):
 # Highscores
 #
 
-# Check for a new highscore. Replace lowest since they're always sorted.
 def updateHighscores (score, name):
+    """ Check for a new highscore. Replace lowest since they're always
+    sorted. """
     global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORESFILE
 
     # Don't score the author for testing or no compete flag.
@@ -470,15 +515,15 @@ if DEBUG:
 buzzwords = set()
 buzzphrases = set()
 
-for word in readData(WORDFILE):
+for word in readData(WORD_STORE):
     buzzwords.add(word)
     buzzwords.add(word + 's')
 
-for phrase in readData(PHRASEFILE):
+for phrase in readData(PHRASE_STORE):
     buzzphrases.add(phrase)
 
 # Will create score file with min. value if doesn't exist.
-MATCHES = readScore()
+MATCHES = readScore(HOSTING_TYPE, SCORE_STORE)
 
 # Get comments already scored to prevent repeats and multiple plays.
 already_scored = readScored()
