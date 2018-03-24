@@ -1,5 +1,4 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
-# TODO: Figure out how to save parent ID comment/submission for scored.
 # TODO: Figure out Dogecoin or something useless to award monthly winners.
 
 import os
@@ -27,13 +26,16 @@ AUTHOR = "BarcaloungerJockey"
 COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')"
 SUBREDDIT = "buttcoin"
-WORDFILE = "words.txt"
-PHRASEFILE = "phrases.txt"
+SCOREFILE = "score.txt"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
 
+# Store the words and phrases to match for bingo, one per line.
+WORDFILE = "words.txt"
+PHRASEFILE = "phrases.txt"
+
 # TODO: implement various approaches to hosting. text, SQL and memcache.
-#HOSTING_TYPE = "sql"
+#HOSTING_TYPE = "sqlite"
 HOSTING_TYPE = "file"
 #HOSTING_TYPE = "memcache"
 
@@ -54,14 +56,13 @@ TRIGGER = "!BuzzwordBingo"
 CMD_HS = TRIGGER + " highscores"
 CMD_SCORE = TRIGGER + " score"
 
-# History of scored comments to skip. Limit file size.
-SCOREDFILE = "scored.txt"
+# Limit of scored comments saved to skip.
 MAX_SCORED = 300
+SCOREDFILE = "scored.txt"
 
-# Current scores and highscores.
-SCOREFILE = "score.txt"
-HIGHSCOREFILE = "highscores.txt"
+# Number of highscores.
 MAX_HIGHSCORES = 5
+HIGHSCOREFILE = "highscores.txt"
 
 # Signature for all replies.
 sig = (
@@ -112,7 +113,7 @@ def blockedReply(link):
 # Datastores.
 #
 
-#HOSTING_TYPE = 'sql'
+#HOSTING_TYPE = 'sqlite'
 #HOSTING_TYPE = 'file'
 #HOSTING_TYPE = 'memcache'
 
@@ -155,7 +156,7 @@ def writeScore(score):
     if HOSTING_TYPE is "file":
         try:
             scoref = open(SCOREFILE, 'w')
-            scoref.write(str(MATCHES))
+            scoref.write(str(score))
         except:
             print("ERROR: Can't write " + SCOREFILE)
         scoref.close()
@@ -164,22 +165,36 @@ def writeScore(score):
         exit()
 
 def readScored():
-    global SCOREDFILE, HOSTING_TYPE, already_scored
+    global SCOREDFILE, HOSTING_TYPE
 
     if HOSTING_TYPE is "file":
         try:
-            # TODO: close file not?
-            scoredf = open(SCOREDFILE, "r+")
-            scored = scoredf.readline().splitlines()
+            scoredf = open(SCOREDFILE, "r")
+            scored = scoredf.read().splitlines()
         except FileNotFoundError:
             scoredf = open(SCOREDFILE, "w")
             scored = []
             print("No comments scored yet.")
-        already_scored = scored
-        return(scoredf)
+        scoredf.close()
+        return(scored)
     else:
         print("Not implemented yet.")
         exit()
+
+def writeScored():
+    global SCOREDFILE, HOSTING_TYPE, MAX_SCORED, already_scored
+
+    if HOSTING_TYPE is "file":
+        length = len(already_scored)
+        if length > MAX_SCORED:
+            already_scored = already_scored[length - MAX_SCORED, length]
+        try:
+            scoredf = open(SCOREDFILE, "w")
+        except:
+            print("ERROR: Cannot write to " + SCOREDFILE)
+            exit()
+        scoredf.writelines(("\n".join(already_scored)) + "\n")
+        scoredf.close()
 
 def readHighscores():
     global HIGHSCOREFILE, HOSTING_TYPE
@@ -240,48 +255,44 @@ def updateHighscores (score, name):
 # Replies
 #
 
-# Check to see if a comment has been replied to already to avoid duplicates.
+def markScored (post):
+    global already_scored
 
-def alreadyScored(post):
+    if type(post) is praw.models.Submission:
+        entry = "sub " + str(post.id)
+    else:
+        entry = str(post.id)
+    if DEBUG:
+        print("Scored: " + entry)
+    if entry not in already_scored:
+        already_scored.append(entry)
+    
+# Check to see if a comment has been replied to already to avoid duplicates.
+def alreadyScored (post):
     global USERNAME, already_scored
 
     # Basic check of replies to avoid duplicates. Redundant but safe if the
     # data is erased, corrupted, etc.
-
-    # TODO: change from list to set to avoid dupes, find why multiple writes
-    # are happening, some w/o newlines.
-
     if type(post) is praw.models.Submission:
         if ("sub " + str(post.id)) in already_scored:
             if DEBUG:
-                print ("Submission already scored, skipping.")
-            # TODO: Sorry reply?
+                print("Submission already scored, skipping.")
             return True
     elif type(post):
-        if (post.id) in comments_scored:
+        if (post.id) in already_scored:
             if DEBUG:
-                print ("Comment already scored, skipping.")
-            # TODO: sorry reply
-            print("Comment: " + post.id)
-            print(vars(post))
-            exit()
+                print("Comment already scored, skipping.")
             return True
     else:
-        print ("Unknown post type, exiting.")
+        print("Unknown post type, exiting.")
         exit()
 
     replies = comment.replies
     for reply in replies:
         if (r.comment(reply).author.name == USERNAME):
             if DEBUG:
-                print ("Skipping author\'s post.")
+                print("Skipping author\'s post.")
             return True
-
-    # Check marked comments and skip those already scored.
-    if str(comment.id) in comments_scored:
-        if DEBUG:
-            print ("Already scored, skipping.")
-        return True
     return False
 
 # Creates a standard reply for wins/losses, and updates minimum score required.
@@ -304,39 +315,20 @@ def getReply (matches):
     return (reply)
 
 # Add the post to list of scored, post reply.
-# TODO
 def postReply (post, reply):
-    global RATELIMIT, sig, already_scored, submissions_scored, comments_scored, scoredf
+    global RATELIMIT, sig, already_scored
 
     if DEBUG:
-        print (reply)
+        print(reply)
     else:
-        print ("X", end='')
+        print("X", end='')
 
-    # Mark post as scored in datastore, trim as needed.
-    if type(post) is praw.models.Submission:
-        entry = "sub " + str(post.id)
-        submissions_scored.append(entry)
-    else:
-        entry = str(post.id)
-        comments_scored.append(entry)
-    already_scored.append(entry)
-
-    length = len(already_scored)
-    if length > MAX_SCORED:
-        already_scored = already_scored[length - MAX_SCORED, length]
+    markScored(post)
+    newcomment = None
     try:
-        # TODO: make sure file is rewritten? appended to? ends w/newline.
-        scoredf.writelines("\n".join(already_scored + "\n"))
-    except:
-        print ("ERROR: Cannot write to " + SCOREDFILE)
-        exit()
-
-    try:
-        post.reply(reply + sig)
+        newcomment = post.reply(reply + sig)
     except praw.exceptions.APIException as err:
         print(err)
-    time.sleep(RATELIMIT)
 
 #
 # Bingo.
@@ -367,9 +359,6 @@ def getMatches(text):
     dupes = matches_found.copy()
     for word in dupes:
         matches_found.discard(word + 's')
-
-    if DEBUG:
-        print (matches_found)
     return (matches_found)
 
 # Check if we've already replied, score text and reply.
@@ -400,7 +389,7 @@ def getText (parent):
             try:
                 text = parent.crosspost_parent_list[0]['selftext']
             except AttributeError:
-                print ("ERROR: Unsupported or broken post reference.")
+                print("ERROR: Unsupported or broken post reference.")
                 
     if text is None or text is '':
         # Try to get text from linked post in title.
@@ -422,7 +411,7 @@ def getText (parent):
                 print("Empty link, this shouldn't happen.")
                 exit()
         except AttributeError:
-            print ("ERROR: Not implemented yet, skipping.")
+            print("ERROR: Not implemented yet, skipping.")
     return(text)
 
 # Check a comment or post for the invocation keyword.
@@ -453,20 +442,19 @@ def checkComment (comment):
             regex = re.compile(CMD_SCORE + '\s+([0-9]+)\s*')
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
-                print("tempscore: " + tempscore)
                 MATCHES = int(tempscore)
 
         # Score the parent comment.
         comment.refresh()
         parent = comment.parent()
-        if alreadyScored(parent):
+        if alreadyScored(parent) or alreadyScored(comment):
             print("Already scored.")
-            postReply(comment, ALREADY_SCORED)
             return
 
         # Do not allow player to score their own post, unless it's testing.
         elif not (comment.author == parent.author.name and
-                comment.author.name != AUTHOR):
+                  comment.author.name != AUTHOR):
+            markScored(parent)
             playBingo(comment, getText(parent))
 
 #
@@ -475,8 +463,8 @@ def checkComment (comment):
 
 if DEBUG:
     SUBREDDIT = 'testingground4bots'
-    print ("Username/pass: " + USERNAME, PASSWORD)
-    print ("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
+    print("Username/pass: " + USERNAME, PASSWORD)
+    print("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
 
 # Read words and phrases, build sets of each.
 buzzwords = set()
@@ -492,12 +480,8 @@ for phrase in readData(PHRASEFILE):
 # Will create score file with min. value if doesn't exist.
 MATCHES = readScore()
 
-# File to track comments already scored to prevent repeats and multiple plays.
-# Leave open to write new entries.
-# TODO: leave open? no?
-submissions_scored = []
-comments_scored = []
-scoredf = readScored()
+# Get comments already scored to prevent repeats and multiple plays.
+already_scored = readScored()
 
 # Load high scores. If file does not exist, create one.
 highscores = readHighscores()
@@ -517,7 +501,7 @@ r = praw.Reddit(
     username=USERNAME
 )
 if DEBUG:
-    print ("Authenticated as: " + format(r.user.me()))
+    print("Authenticated as: " + format(r.user.me()))
 
 # 1. Don't reply to the same request more than once.
 # 2. Don't hit the same page more than once per 30 seconds.
@@ -529,8 +513,8 @@ for submission in sub:
 
     for comment in post.comments:
         if DEBUG and (comment.author != AUTHOR):
-            print (AUTHOR + " didn't post it, skipping.")
             break
         checkComment(comment)
 
-scoredf.close()
+    # Write list of scored comments after each submission.
+    writeScored()
