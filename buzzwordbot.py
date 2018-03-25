@@ -1,6 +1,11 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
 # TODO: Figure out Dogecoin or something useless to award monthly winners.
+# TODO: sqlite support, mysql support
+# TODO: link to the posts that generated the winning scores
+# TODO: Add "already played" message? When parent replied, check replies?
 
+import sys
+import getopt
 import os
 import time
 import string
@@ -25,13 +30,13 @@ AUTHOR = "BarcaloungerJockey"
 COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
 SUBREDDIT = "buttcoin"
-SCORE_STORE = "score"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+SCORE_STORE = "score"
 
 # TODO: implement various approaches to hosting. text, SQL and memcache.
-#HOSTING_TYPE = "sqlite"
-HOSTING_TYPE = "file"
+HOSTING_TYPE = "sqlite"
+#HOSTING_TYPE = "file"
 
 # Import libs and set store names based on hosting type.
 if HOSTING_TYPE is "file":
@@ -69,7 +74,7 @@ SCORED_STORE = "scored"
 
 # Number of highscores.
 MAX_HIGHSCORES = 5
-HIGHSCORE_STORE = "highscores"
+HIGHSCORES_STORE = "highscores"
 
 # Signature for all replies.
 sig = (
@@ -122,34 +127,56 @@ def blockedReply(link):
 #
 
 #HOSTING_TYPE = "sqlite", "file", "memcache"
+BAD_STORE = (
+    "Unknown store type. Valid settings are 'file' or 'sqlite'."
+)
 
 if HOSTING_TYPE is "file":
     store = "file"
 elif HOSTING_TYPE is "sqlite":
+    dbexists = True
+    if not os.path.isfile(DATABASE):
+        dbexists = False
+
     try:
         store = sqlite3.connect(DATABASE)
         curr = store.cursor()
     except sqlite3.Error (err):
         print("ERROR: Cannot create or connect to " + DATABASE)
         exit()
-    stmts = (
-        "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) NOT NULL); " +
-        "CREATE TABLE " + PHRASE_STORE + " (phrase VARCHAR(255) NOT NULL); " +
-        "CREATE TABLE " + SCORE_STORE + " (score int); " +
-        "INSERT INTO " + SCORE_STORE + " VALUES (" + MIN_MATCHES + "); " +
-        "CREATE TABLE " + SCORED_STORE + " (scored VARCHAR(16) NOT NULL); " +
-        "CREATE TABLE " + HIGHSCORES_STORE +
-        " (score int NOT NULL, name VARCHAR(32) NOT NULL); "
-        )
-    curr.execute(stmts)
-    highscores = []
-    for i in range (0,3):
-        highscores.append(str(i + 1) + ", '/u/" + AUTHOR + "'")
-    stmts = "INSERT INTO " + HIGHSCORES_STORE + " VALUES (?,?)"
-    curr.executemany(action, highscores)    
+
+    if not dbexists:
+        stmts = [
+        "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) NOT NULL)",
+        "CREATE TABLE " + PHRASE_STORE + " (phrase VARCHAR(255) NOT NULL)",
+        "CREATE TABLE " + SCORED_STORE + " (scored VARCHAR(16) NOT NULL)",
+        "CREATE TABLE " + SCORE_STORE + " (score int)",
+        "INSERT INTO " + SCORE_STORE + " VALUES (" + str(MIN_MATCHES) + ")",
+        ("CREATE TABLE " + HIGHSCORES_STORE +
+        " (score int NOT NULL, name VARCHAR(32) NOT NULL)")
+        ]
+        try:
+            for stmt in stmts:
+                curr.execute(stmt)
+        except sqlite3.Error:
+            print("ERROR: Cannot create tables in " + DATABASE)
+            exit()
+        highscores = []
+        for i in range (0,3):
+            highscores.append([i + 1, "/u/" + AUTHOR])
+            stmt = (
+            "INSERT INTO " + HIGHSCORES_STORE +
+            " VALUES (" + str(i + 1) + ", '/u/" + AUTHOR + "')"
+            )
+            try:
+                curr.execute(stmt)
+            except:
+                print("ERROR: Cannot populate " + HIGHSCORES_STORE + " table.")
+                exit()
+        store.commit()
 
 else:
-    print("Hosting type not implemented yet.")
+    print(BAD_STORE)
     exit()
 
 def readData(*args):
@@ -166,17 +193,14 @@ def readData(*args):
         dataf.close()
         return(words)
 
-    elif type(kwargs[0]) is sqlite3.Connection:
+    elif type(args[0]) is sqlite3.Connection:
         try:
             cur = store.cursor()
-            cur.execute("SELECT * FROM " + kwargs[1])
+            cur.execute("SELECT * FROM " + args[1])
             return(cur.fetchall())
         except sqlite3.Error (err):
-            print("ERROR: Cannot retrieve " + kwargs[1] + "s from db.")
+            print("ERROR: Cannot retrieve " + args[1] + "s from db.")
             exit()
-    else:
-        print("Store type not implemented yet.")
-        exit()
 
 def readScore(*args):
     """ Returns the current score to win. """
@@ -197,13 +221,11 @@ def readScore(*args):
         try:
             cur = store.cursor()
             cur.execute("SELECT score FROM " + args[1])
-            return(int(cur.fetchall()))
-        except sqlite3.Error (err):
+            score = cur.fetchone()[0]
+            return(int(score))
+        except sqlite3.Error:
             print("ERROR: Cannot retrieve score from db.")
             exit()
-    else:
-        print("Store type not implemented yet.")
-        exit()
 
 def writeScore(*args):
     """ Saves the current score to win. """
@@ -222,12 +244,10 @@ def writeScore(*args):
         try:
             cur = store.cursor()
             cur.execute("UPDATE " + args[1] + " SET score=" + score)
-        except sqlite3.Error (err):
-            print("ERROR: Cannot update score in db.")
+        except sqlite3.Error:
+            print("ERROR: Cannot update score in " + DATABASE)
             exit()
-    else:
-        print("Store type not implemented yet.")
-        exit()
+        store.commit()
 
 def readScored(*args):
     """ Reads list of posts already scored/replied to. """
@@ -247,15 +267,13 @@ def readScored(*args):
 
     elif type(args[0]) is sqlite3.Connection:
         try:
+            store.row_factory = lambda cursor, row: row[0]
             cur = store.cursor()
             cur.execute("SELECT * FROM " + args[1])
             return(cur.fetchall())
-        except sqlite3.Error (err):
+        except sqlite3.Error:
             print("ERROR: Cannot read scored comments from " + args[1])
             exit()
-    else:
-        print("Store type not implemented yet.")
-        exit()
 
 def writeScored(*args):
     """ Saves list of posts already scored/replied to. """
@@ -280,16 +298,18 @@ def writeScored(*args):
     elif type(args[0]) is sqlite3.Connection:
         try:
             cur = store.cursor()
-            cur.execute("DELETE * FROM " + args[1])
-            cur.execute("INSERT INTO " + args[1] + " VALUES (?)", already_scored)
-        except sqlite3.Error (err):
-            print("ERROR: Cannot write scored comments to " + args[1])
+            cur.execute("DELETE FROM " + args[1])
+            for scored in already_scored:
+                stmt = "INSERT INTO " + args[1] + " VALUES ('" + scored + "')"
+                cur.execute(stmt)
+        except sqlite3.Error:
+            print("ERROR: Cannot write to " + args[1] + " table.")
             exit()
-    else:
-        print("Store type not implemented yet.")
-        exit()
+        store.commit()
 
 def readHighscores(*args):
+    """ Retrieves list of highscores. """
+
     global AUTHOR
 
     highscores = []
@@ -309,27 +329,41 @@ def readHighscores(*args):
         try:
             cur = store.cursor()
             cur.execute("SELECT score,name FROM " + args[1])
-        except sqlite3.Error (err):
-            print("ERROR: Cannot write scored comments to " + args[1])
+        except sqlite3.Error:
+            print("ERROR: Cannot read scored comments from " + args[1])
             exit()
+
     else:
-        print("Store type not implemented yet.")
+        print(BAD_STORE)
         exit()
     return(highscores)
 
-def writeHighscores(handle):
-    global highscores, HOSTING_TYPE
+def writeHighscores(*args):
+    """ Stores list of highscores. """
 
-    if HOSTING_TYPE is "file":
+    if args[0] is "file":
+        name = args[1] + ".txt"
         try:
-            with open(handle, "wb") as f:
-                pickle.dump(highscores, f)
+            with open(name, "wb") as f:
+                pickle.dump(args[2], f)
         except:
-            print("ERROR: Cannot write to " + handle)
+            print("ERROR: Cannot write to file " + name)
         f.close()
-    else:
-        print("Not implemented yet.")
-        exit()
+
+    elif type(args[0]) is sqlite3.Connection:
+        try:
+            cur = store.cursor()
+            cur.execute("DELETE FROM " + args[1])
+            for score,name in args[2]:
+                stmt = (
+                "INSERT INTO " + args[1] + " VALUES (" + int(score) + ", '" +
+                name + "')"
+                )
+                cur.execute(stmt)
+        except sqlite3.Error:
+            print("ERROR: Cannot write to " + args[1] + " table.")
+            exit()
+        store.commit()
 
 #
 # Highscores
@@ -340,7 +374,7 @@ def updateHighscores (score, name):
     Check for a new highscore. Replace lowest since they're always sorted.
     """
 
-    global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORESFILE
+    global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORES_STORE
 
     # Don't score the author for testing or no compete flag.
     if (name == AUTHOR) and not COMPETE:
@@ -354,7 +388,7 @@ def updateHighscores (score, name):
 
     # Resort high to low and save.
     highscores.sort(key = lambda x: x[0], reverse = True)
-    writeHighscores(HIGHSCOREFILE)
+    writeHighscores(store, HIGHSCORES_STORE, highscores)
 
 #
 # Replies
@@ -404,6 +438,7 @@ def alreadyScored (post):
 def getReply (matches):
     global MATCHES
 
+    print("Matches #" + str(len(matches)))
     if len(matches) >= MATCHES:
         reply = winnerReply(matches)
     else:
@@ -565,6 +600,49 @@ def checkComment (comment):
 # MAIN TODO: cleanup
 #
 
+def processOpts(argv):
+    """ Check optional arguments to import text files into database. """
+
+    ACTION = None
+    OPTIONS = [
+        ["import-sqlite", "file"],
+        ["import-mysql", "file"]
+    ]
+
+    opts, usage = [],[]
+    for opt,arg in OPTIONS:
+        opts.append(opt + "=")
+        usage.append("--" + opt + " <" + arg + ">")
+    try:
+        [(option, file)] = getopt.getopt(argv[1:], "", opts)[0]
+    except getopt.GetoptError:
+        name = os.path.basename(__file__)
+        print("Usage: " + name + " [", end="")
+        print("|".join(usage) + "]")
+        exit(2)
+
+    regex = re.compile("^--import-(.+)$")
+    dbtype = regex.search(option).group(1)
+    if HOSTING_TYPE == dbtype:
+        ACTION = dbtype
+
+    if ACTION is not None:
+        if ACTION is "sqlite":
+            cur = store.cursor()
+        dataf = open(file + ".txt", "r")
+        data = dataf.read().splitlines()
+        for line in data:
+            stmt = "INSERT INTO " + file + " VALUES ('" + line + "')"
+            if ACTION is "sqlite":
+                cur.execute(stmt)
+        if ACTION is "sqlite":
+            store.commit()
+        dataf.close()
+        print("Imported " + str(len(data)) + " lines imported into " + file)
+        exit()
+
+processOpts(sys.argv)
+
 if DEBUG:
     SUBREDDIT = "testingground4bots"
     print("Username/pass: " + USERNAME, PASSWORD)
@@ -588,7 +666,7 @@ MATCHES = readScore(store, SCORE_STORE, MIN_MATCHES)
 already_scored = readScored(store, SCORED_STORE)
 
 # Load high scores. If file does not exist, create one.
-highscores = readHighscores(store, HIGHSCORE_STORE)
+highscores = readHighscores(store, HIGHSCORES_STORE)
 highscores.sort(key = lambda x: x[0], reverse = True)
 if DEBUG:
     for score, name in highscores:

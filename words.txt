@@ -248,3 +248,4 @@ DDX
 Vertcoin
 VTC
 Basilisk
+Agora
