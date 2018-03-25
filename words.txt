@@ -202,12 +202,6 @@ pedo
 paedo
 pumpndump
 partnership
-are you stupid
-is the future
-like the Internet
-you dont get it
-fear uncertainty doubt
-fear of missing out
 ledger
 lambodreams
 freedumb
@@ -239,7 +233,6 @@ hardfork
 softfork
 MIOTA
 XEM
-ZEC
 ICX
 Petro
 Bitrefill

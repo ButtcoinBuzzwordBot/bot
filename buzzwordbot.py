@@ -147,8 +147,8 @@ elif HOSTING_TYPE is "sqlite":
 
     if not dbexists:
         stmts = [
-        "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) NOT NULL)",
-        "CREATE TABLE " + PHRASE_STORE + " (phrase VARCHAR(255) NOT NULL)",
+        "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) UNIQUE NOT NULL)",
+        "CREATE TABLE " + PHRASE_STORE + " (phrase VARCHAR(255) UNIQUE NOT NULL)",
         "CREATE TABLE " + SCORED_STORE + " (scored VARCHAR(16) NOT NULL)",
         "CREATE TABLE " + SCORE_STORE + " (score int)",
         "INSERT INTO " + SCORE_STORE + " VALUES (" + str(MIN_MATCHES) + ")",
@@ -163,7 +163,7 @@ elif HOSTING_TYPE is "sqlite":
             exit()
         highscores = []
         for i in range (0,3):
-            highscores.append([i + 1, "/u/" + AUTHOR])
+            highscores.append((i + 1, "/u/" + AUTHOR))
             stmt = (
             "INSERT INTO " + HIGHSCORES_STORE +
             " VALUES (" + str(i + 1) + ", '/u/" + AUTHOR + "')"
@@ -195,6 +195,7 @@ def readData(*args):
 
     elif type(args[0]) is sqlite3.Connection:
         try:
+            store.row_factory = lambda cursor, row: row[0]
             cur = store.cursor()
             cur.execute("SELECT * FROM " + args[1])
             return(cur.fetchall())
@@ -219,9 +220,10 @@ def readScore(*args):
 
     elif type(args[0]) is sqlite3.Connection:
         try:
+            store.row_factory = lambda cursor, row: row[0]
             cur = store.cursor()
             cur.execute("SELECT score FROM " + args[1])
-            score = cur.fetchone()[0]
+            score = cur.fetchone()
             return(int(score))
         except sqlite3.Error:
             print("ERROR: Cannot retrieve score from db.")
@@ -320,15 +322,17 @@ def readHighscores(*args):
                 highscores = pickle.load(f)
         else:
             for i in range (0,3):
-                highscores.append([i + 1, "/u/" + AUTHOR])
+                highscores.append((i + 1, "/u/" + AUTHOR))
             with open(name, "wb") as f:
                 pickle.dump(highscores, f)
         f.close()
 
     elif type(args[0]) is sqlite3.Connection:
         try:
+            store.row_factory = None
             cur = store.cursor()
             cur.execute("SELECT score,name FROM " + args[1])
+            return(cur.fetchall())
         except sqlite3.Error:
             print("ERROR: Cannot read scored comments from " + args[1])
             exit()
@@ -354,10 +358,10 @@ def writeHighscores(*args):
         try:
             cur = store.cursor()
             cur.execute("DELETE FROM " + args[1])
-            for score,name in args[2]:
+            for score, name in args[2]:
                 stmt = (
-                "INSERT INTO " + args[1] + " VALUES (" + int(score) + ", '" +
-                name + "')"
+                    "INSERT INTO " + args[1] + " VALUES (" + str(score) +
+                    ", '" + name + "')"
                 )
                 cur.execute(stmt)
         except sqlite3.Error:
@@ -377,11 +381,11 @@ def updateHighscores (score, name):
     global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORES_STORE
 
     # Don't score the author for testing or no compete flag.
-    if (name == AUTHOR) and not COMPETE:
-        return
+    #if (name == AUTHOR) and not COMPETE:
+    #    return
 
     if len(highscores) < MAX_HIGHSCORES:
-        highscores.append([score, "/u/" + name])
+        highscores.append((score, "/u/" + name))
     elif score > highscores[MAX_HIGHSCORES - 1][0]:
         # Check for duplicate entries.
         highscores[MAX_HIGHSCORES - 1] = [score, "/u/" + name]
@@ -627,21 +631,29 @@ def processOpts(argv):
         ACTION = dbtype
 
     if ACTION is not None:
-        if ACTION is "sqlite":
+        if ACTION == "sqlite":
             cur = store.cursor()
+
         dataf = open(file + ".txt", "r")
         data = dataf.read().splitlines()
         for line in data:
             stmt = "INSERT INTO " + file + " VALUES ('" + line + "')"
-            if ACTION is "sqlite":
-                cur.execute(stmt)
-        if ACTION is "sqlite":
+            print(stmt)
+            if ACTION == "sqlite":
+                try:
+                    cur.execute(stmt)
+                except sqlite3.Error:
+                    print("Likely duplicate entry '" + line + "' into " + file)
+                    exit()
+
+        if ACTION == "sqlite":
             store.commit()
         dataf.close()
         print("Imported " + str(len(data)) + " lines imported into " + file)
         exit()
 
-processOpts(sys.argv)
+if len(sys.argv) > 1:
+    processOpts(sys.argv)
 
 if DEBUG:
     SUBREDDIT = "testingground4bots"
