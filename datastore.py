@@ -1,3 +1,5 @@
+import sqlite3
+
 def createDB(*args):
     """ Create the database and tables. """
 
@@ -30,23 +32,11 @@ def createDB(*args):
         print("ERROR: Cannot create tables in " + DATABASE)
         exit()
 
-    highscores = []
-    for i in range (0,3):
-        highscores.append((i + 1, "/u/" + AUTHOR))
-        stmt = (
-            "INSERT INTO " + HIGHSCORES_STORE +
-            " VALUES (" + str(i + 1) + ", '/u/" + AUTHOR + "')"
-        )
-        try:
-            cur.execute(stmt)
-        except:
-            print("ERROR: Cannot populate " + HIGHSCORES_STORE + " table.")
-            exit()
     store.commit()
     cur.close()
 
-def readData(*args: "store_type, file|table_name") -> list:
-    """ Reads words or phrases data. """
+def readData(*args):
+    """ Read words or phrases data. """
 
     if args[0] is "file":
         name = args[1] + ".txt"
@@ -61,12 +51,12 @@ def readData(*args: "store_type, file|table_name") -> list:
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            store.row_factory = lambda cursor, row: row[0]
-            cur = store.cursor()
+            args[0].row_factory = lambda cursor, row: row[0]
+            cur = args[0].cursor()
             cur.execute("SELECT * FROM " + args[1])
             return(cur.fetchall())
-        except sqlite3.Error (err):
-            print("ERROR: Cannot retrieve " + args[1] + "s from db.")
+        except sqlite3.Error:
+            print("ERROR: Cannot retrieve " + args[1] + " from db.")
             exit()
 
 def readScore(*args: "store_name, file|table_name, default_score") -> int:
@@ -86,8 +76,8 @@ def readScore(*args: "store_name, file|table_name, default_score") -> int:
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            store.row_factory = lambda cursor, row: row[0]
-            cur = store.cursor()
+            args[0].row_factory = lambda cursor, row: row[0]
+            cur = args[0].cursor()
             cur.execute("SELECT score FROM " + args[1])
             score = cur.fetchone()
             return(int(score))
@@ -110,12 +100,12 @@ def writeScore(*args) -> None:
 
     elif type(store) is sqlite3.Connection:
         try:
-            cur = store.cursor()
+            cur = args[0].cursor()
             cur.execute("UPDATE " + args[1] + " SET score=" + score)
         except sqlite3.Error:
             print("ERROR: Cannot update score in db.")
             exit()
-        store.commit()
+        args[0].commit()
 
 def readScored(*args) -> list:
     """ Reads list of posts already scored/replied to. """
@@ -133,8 +123,8 @@ def readScored(*args) -> list:
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            store.row_factory = lambda cursor, row: row[0]
-            cur = store.cursor()
+            args[0].row_factory = lambda cursor, row: row[0]
+            cur = args[0].cursor()
             cur.execute("SELECT * FROM " + args[1])
             return(cur.fetchall())
         except sqlite3.Error:
@@ -162,7 +152,7 @@ def writeScored(*args: "store_type, file|table_name, max_score, already_scored[]
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            cur = store.cursor()
+            cur = args[0].cursor()
             cur.execute("DELETE FROM " + args[1])
             for scored in already_scored:
                 stmt = "INSERT INTO " + args[1] + " VALUES ('" + scored + "')"
@@ -170,7 +160,7 @@ def writeScored(*args: "store_type, file|table_name, max_score, already_scored[]
         except sqlite3.Error:
             print("ERROR: Cannot write to " + args[1] + " table.")
             exit()
-        store.commit()
+        args[0].commit()
 
 def readHighscores(*args: "store_type, file|table_name, author") -> list:
     """ Retrieves list of highscores. """
@@ -192,8 +182,8 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            store.row_factory = None
-            cur = store.cursor()
+            args[0].row_factory = None
+            cur = args[0].cursor()
             cur.execute("SELECT score,name FROM " + args[1])
             return(cur.fetchall())
         except sqlite3.Error:
@@ -214,7 +204,7 @@ def writeHighscores(*args) -> None:
 
     elif type(args[0]) is sqlite3.Connection:
         try:
-            cur = store.cursor()
+            cur = args[0].cursor()
             cur.execute("DELETE FROM " + args[1])
             for score, name in args[2]:
                 stmt = (
@@ -225,4 +215,4 @@ def writeHighscores(*args) -> None:
         except sqlite3.Error:
             print("ERROR: Cannot write to " + args[1] + " table.")
             exit()
-        store.commit()
+        args[0].commit()

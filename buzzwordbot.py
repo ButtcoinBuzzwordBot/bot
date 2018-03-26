@@ -1,16 +1,24 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
 # TODO: Figure out Dogecoin or something useless to award monthly winners.
+# TODO: mysql, memcache support
+# TODO: link to the posts that generated the winning scores
+# TODO: Add "already played" message? When parent replied, check replies?
+# TODO: Randomize win/loss comments and insults.
 
+import sys
+import getopt
 import os
 import time
 import string
 import re
-import pickle
-import urllib
 
 # Packages must be installed.
 import bs4
 import praw
+import urllib
+
+import datastore as ds
+import scoring as scr
 
 #
 # SETTINGS.
@@ -24,20 +32,24 @@ import praw
 DEBUG = True
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
-BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/' + AUTHOR +')"
+BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
+REDDIT = "http://reddit.com"
 SUBREDDIT = "buttcoin"
-SCOREFILE = "score.txt"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+SCORE_STORE = "score"
+WORD_STORE = "words"
+PHRASE_STORE = "phrases"
 
-# Store the words and phrases to match for bingo, one per line.
-WORDFILE = "words.txt"
-PHRASEFILE = "phrases.txt"
-
-# TODO: implement various approaches to hosting. text, SQL and memcache.
-#HOSTING_TYPE = "sqlite"
-HOSTING_TYPE = "file"
-#HOSTING_TYPE = "memcache"
+# If HOSTED is True the script continues looping. Set appropriate storage type and
+# info based on your hosting options.
+HOSTED = False
+STORE_TYPE = "sqlite"
+#STORE_TYPE = "file"
+#STORE_TYPE = "mysql"
+MYSQL_USER = "user"
+MYSQL_PW = "password"
+MYSQL_HOST = "127.0.0.1"
 
 # Reddit account and API OAuth information. You can hardcode values here but
 # it creates a security risk if your code is public (on Github, etc.)
@@ -47,7 +59,7 @@ PASSWORD = os.environ['REDDIT_PASSWORD']
 CLIENT_ID = os.environ['CLIENT_ID']
 CLIENT_SECRET = os.environ['CLIENT_SECRET']
 
-# Ratelimit starts at 10 minutes per reply for a bot account w/no karma.
+# Start rate limit at 600 (10 minutes) per reply for a bot account w/no karma.
 # Drops quickly as karma increases, can go down to 30 seconds minimum.
 RATELIMIT = 30
 
@@ -58,19 +70,17 @@ CMD_SCORE = TRIGGER + " score"
 
 # Limit of scored comments saved to skip.
 MAX_SCORED = 300
-SCOREDFILE = "scored.txt"
+SCORED_STORE = "scored"
 
 # Number of highscores.
 MAX_HIGHSCORES = 5
-HIGHSCOREFILE = "highscores.txt"
+HIGHSCORES_STORE = "highscores"
 
 # Signature for all replies.
 sig = (
     "\n_____\n\n^(I\'m a hand-run bot, *bleep* *bloop* "
     "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
 )
-
-ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
 
 # Highscore report reply.
 def highscoresReply (highscores):
@@ -79,8 +89,8 @@ def highscoresReply (highscores):
     )
         
     count = 1
-    for score, name in highscores:
-        reply += str(count) + '. ' + name + ': ' + str(score) + "\n"
+    for score,name,url in highscores:
+        reply += str(count) + ". " + name + ": " + str(score) + " (" + url + ")\n"
         count += 1
     return(reply)
 
@@ -105,198 +115,77 @@ def blockedReply(link):
         "No way, bro. Robots are blocked for: " + link
     )
 
+# TODO: going to use this? Gotta make sure it's posted only once.
+ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
+
 #
 # END OF SETTINGS.
 #
 
-#
-# Datastores.
-#
+# Initialize PRAW with custom User-Agent.
+if DEBUG:
+    SUBREDDIT = "testingground4bots"
+    print("Username/pass: " + USERNAME, PASSWORD)
+    print("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
+    print("Authenticating...")
+r = praw.Reddit(
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    password=PASSWORD,
+    user_agent=BOTNAME,
+    username=USERNAME
+)
+if DEBUG:
+    print("Authenticated as: " + format(r.user.me()))
 
-#HOSTING_TYPE = 'sqlite'
-#HOSTING_TYPE = 'file'
-#HOSTING_TYPE = 'memcache'
+dbexists = True
+if STORE_TYPE is "file":
+    import pickle
+    store = "file"
 
-def readData(handle):
-    global HOSTING_TYPE
-
-    if HOSTING_TYPE is "file":
-        try:
-            dataf = open(handle, 'r')
-        except:
-            print("ERROR: File " + handle + "does not exist.")
-            exit()
-        words  = dataf.read().splitlines()
-        dataf.close()
-        return(words)
-    else:
-        print("Not implemented yet.")
+elif STORE_TYPE is "sqlite":
+    import sqlite3
+    DATABASE = "buzzword.db"
+    if not os.path.isfile(DATABASE):
+        dbexists = False
+    try:
+        store = sqlite3.connect(DATABASE)
+    except sqlite3.Error (err):
+        print("ERROR: Cannot create or connect to " + DATABASE)
         exit()
 
-def readScore():
-    global MIN_MATCHES, SCOREFILE, HOSTING_TYPE
-    
-    if HOSTING_TYPE is "file":
-        try:
-            scoref = open(SCOREFILE, "r")
-            score = int(scoref.readline())
-        except FileNotFoundError:
-            scoref = open(SCOREFILE, 'w')
-            score = MIN_MATCHES
-            scoref.write(str(score))
-        scoref.close()
-        return(score)
-    else:
-        print("Not implemented yet.")
-        exit()
-
-def writeScore(score):
-    global SCOREFILE, HOSTING_TYPE
-
-    if HOSTING_TYPE is "file":
-        try:
-            scoref = open(SCOREFILE, 'w')
-            scoref.write(str(score))
-        except:
-            print("ERROR: Can't write " + SCOREFILE)
-        scoref.close()
-    else:
-        print("Not implemented yet.")
-        exit()
-
-def readScored():
-    global SCOREDFILE, HOSTING_TYPE
-
-    if HOSTING_TYPE is "file":
-        try:
-            scoredf = open(SCOREDFILE, "r")
-            scored = scoredf.read().splitlines()
-        except FileNotFoundError:
-            scoredf = open(SCOREDFILE, "w")
-            scored = []
-            print("No comments scored yet.")
-        scoredf.close()
-        return(scored)
-    else:
-        print("Not implemented yet.")
-        exit()
-
-def writeScored():
-    global SCOREDFILE, HOSTING_TYPE, MAX_SCORED, already_scored
-
-    if HOSTING_TYPE is "file":
-        length = len(already_scored)
-        if length > MAX_SCORED:
-            already_scored = already_scored[length - MAX_SCORED, length]
-        try:
-            scoredf = open(SCOREDFILE, "w")
-        except:
-            print("ERROR: Cannot write to " + SCOREDFILE)
-            exit()
-        scoredf.writelines(("\n".join(already_scored)) + "\n")
-        scoredf.close()
-
-def readHighscores():
-    global HIGHSCOREFILE, HOSTING_TYPE
-
-    highscores = []
-    if HOSTING_TYPE is "file":
-        if os.path.isfile(HIGHSCOREFILE):
-            with open(HIGHSCOREFILE, 'rb') as f:
-                highscores = pickle.load(f)
+elif STORE_TYPE is "mysql":
+    import mysql
+    DATABASE = "buzzword"
+    try:
+        store = mysql.connector.connect(
+            user=MYSQL_USER, password=MYSQL_PW, host=MYSQL_HOST, database=DATABASE)
+    except mysql.connector.Error as err:
+        if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
+            print("Username or password error for " + DATABASE)
+        elif err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
+            dbexists = False
         else:
-            for i in range (0,3):
-                highscores.append([i + 1, '/u/' + AUTHOR])
-            with open(HIGHSCOREFILE, 'wb') as f:
-                pickle.dump(highscores, f)
-        f.close()
-    else:
-        print("Not implemented yet.")
+            print(err)
+
+else:
+    print("Unknown store type. Valid settings are: file, sqlite, mysql.")
+    exit()
+
+if not dbexists:
+        ds.createDB(store, STORE_TYPE, DATABASE, WORD_STORE, PHRASE_STORE,
+                    SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE)
+        ds.writeHighscores(store, STORE_TYPE, scr.newHighscores(SUBREDDIT, AUTHOR))
+        print("Database created. Please import word/phrases before running.")
         exit()
-    return(highscores)
-
-def writeHighscores(handle):
-    global highscores, HOSTING_TYPE
-
-    if HOSTING_TYPE is "file":
-        try:
-            with open(handle, 'wb') as f:
-                pickle.dump(highscores, f)
-        except:
-            print("ERROR: Cannot write to " + handle)
-        f.close()
-    else:
-        print("Not implemented yet.")
-        exit()
-
-#
-# Highscores
-#
-
-# Check for a new highscore. Replace lowest since they're always sorted.
-def updateHighscores (score, name):
-    global highscores, AUTHOR, COMPETE, MAX_HIGHSCORES, HIGHSCORESFILE
-
-    # Don't score the author for testing or no compete flag.
-    if (name == AUTHOR) and not COMPETE:
-        return
-
-    if len(highscores) < MAX_HIGHSCORES:
-        highscores.append([score, '/u/' + name])
-    elif score > highscores[MAX_HIGHSCORES - 1][0]:
-        # Check for duplicate entries.
-        highscores[MAX_HIGHSCORES - 1] = [score, '/u/' + name]
-
-    # Resort high to low and save.
-    highscores.sort(key = lambda x: x[0], reverse = True)
-    writeHighscores(HIGHSCOREFILE)
 
 #
 # Replies
 #
 
-def markScored (post):
-    global already_scored
-
-    if type(post) is praw.models.Submission:
-        entry = "sub " + str(post.id)
-    else:
-        entry = str(post.id)
-    if DEBUG:
-        print("Scored: " + entry)
-    if entry not in already_scored:
-        already_scored.append(entry)
-    
-# Check to see if a comment has been replied to already to avoid duplicates.
-def alreadyScored (post):
-    global USERNAME, already_scored
-
-    # Basic check of replies to avoid duplicates. Redundant but safe if the
-    # data is erased, corrupted, etc.
-    if type(post) is praw.models.Submission:
-        if ("sub " + str(post.id)) in already_scored:
-            if DEBUG:
-                print("Submission already scored, skipping.")
-            return True
-    elif type(post):
-        if (post.id) in already_scored:
-            if DEBUG:
-                print("Comment already scored, skipping.")
-            return True
-    else:
-        print("Unknown post type, exiting.")
-        exit()
-
-    replies = comment.replies
-    for reply in replies:
-        if (r.comment(reply).author.name == USERNAME):
-            if DEBUG:
-                print("Skipping author\'s post.")
-            return True
-    return False
-
-# Creates a standard reply for wins/losses, and updates minimum score required.
 def getReply (matches):
+    """ Create a reply for win/loss, and updates minimum score required. """
+
     global MATCHES
 
     if len(matches) >= MATCHES:
@@ -311,19 +200,20 @@ def getReply (matches):
     else:
         if MATCHES > MIN_MATCHES:
             MATCHES -= 1
-    writeScore(MATCHES)
+    ds.writeScore(STORE_TYPE, SCORE_STORE, MATCHES)
     return (reply)
 
-# Add the post to list of scored, post reply.
 def postReply (post, reply):
+    """ Add the post to list of scored, post reply. """
+
     global RATELIMIT, sig, already_scored
 
     if DEBUG:
         print(reply)
     else:
-        print("X", end='')
+        print("X", end="")
 
-    markScored(post)
+    scr.markScored(post)
     newcomment = None
     try:
         newcomment = post.reply(reply + sig)
@@ -331,10 +221,12 @@ def postReply (post, reply):
         print(err)
 
 #
-# Bingo.
+# Bingo
 #
 
 def getMatches(text):
+    """ Match words and phrases in text, return score. """
+
     global buzzwords, buzzphrases, MATCHES
     matches_found = set()
 
@@ -358,25 +250,32 @@ def getMatches(text):
     # Remove plural duplicates.
     dupes = matches_found.copy()
     for word in dupes:
-        matches_found.discard(word + 's')
+        matches_found.discard(word + "s")
     return (matches_found)
 
-# Check if we've already replied, score text and reply.
 def playBingo (comment, text):
+    """ Check if we've already replied, score text and reply. """
+
     matches_found = getMatches(text)
 
     # Check highscores. Post reply to comment then wait out RATELIMIT.
-    updateHighscores(len(matches_found), comment.author.name)
+    print(vars(comment))
+    exit()
+    scr.updateHighscores(len(matches_found), comment.author.name, url, highscores)
+    ds.writeHighscores(store, HIGHSCORES_STORE, highscores)
+
     reply = getReply(matches_found)
     postReply(comment, reply)
 
 #
-# Comments.
+# Comments
 #
 
-# Retrieve text from a variety of possible sources: original or crosspost,
-# relies themselves, and linked Reddit posts.
 def getText (parent):
+    """ Retrieve text from a variety of possible sources: original or crosspost,
+    relies themselves, and linked Reddit posts.
+    """
+    
     # Try to get text from original post.
     try:
         text = parent.selftext
@@ -391,37 +290,37 @@ def getText (parent):
             except AttributeError:
                 print("ERROR: Unsupported or broken post reference.")
                 
-    if text is None or text is '':
+    if text is None or text is "":
         # Try to get text from linked post in title.
         try:
-            # TODO: Code to scrape pages from title link.
             url = parent.url
-            regex = re.compile('^(http[s]*://[^\s]+)')
+            regex = re.compile("^(http[s]*://[^\s]+)")
             link = regex.search(comment.body).group(1)
-            ignore_tags = ['style', 'script', '[document]', 'head', 'title']
+            ignore_tags = ["style", "script", "[document]", "head", "title"]
             if link is not None:
                 try:
                     with urllib.request.urlopen(link) as response:
                         html = response.read()
-                        soup = bs4.BeautifulSoup(html, 'html.parser')
+                        soup = bs4.BeautifulSoup(html, "html.parser")
                     text = [s.extract() for s in soup(ignore_tags)]
                 except urllib.error.HTTPError:
                     postReply(comment, blockedReply(link))
             else:
-                print("Empty link, this shouldn't happen.")
+                print("\nEmpty link, this shouldn't happen.")
                 exit()
         except AttributeError:
-            print("ERROR: Not implemented yet, skipping.")
+            print("\nERROR: Not implemented yet, skipping.")
     return(text)
 
-# Check a comment or post for the invocation keyword.
 def checkComment (comment):
-    global MATCHES, highscores
+    """ Check a comment or post for the invocation keyword. """
+
+    global USERNAME, MATCHES, highscores, already_scored
     
     if DEBUG:
         print("comment: " + format(comment))
     else:
-        print(".", end='', flush=True)
+        print(".", end="", flush=True)
     comment.refresh()
     replies = comment.replies
 
@@ -433,13 +332,13 @@ def checkComment (comment):
 
     # Process various triggers if found in comment.
     if (CMD_HS in comment.body):
-        if alreadyScored(comment):
+        if scr.alreadyScored(comment, already_scored):
             return
         postReply(comment, highscoresReply(highscores))
 
     elif (TRIGGER in comment.body):
         if CMD_SCORE in comment.body:
-            regex = re.compile(CMD_SCORE + '\s+([0-9]+)\s*')
+            regex = re.compile(CMD_SCORE + "\s+([0-9]+)\s*")
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
                 MATCHES = int(tempscore)
@@ -447,74 +346,115 @@ def checkComment (comment):
         # Score the parent comment.
         comment.refresh()
         parent = comment.parent()
-        if alreadyScored(parent) or alreadyScored(comment):
+        if (scr.alreadyScored(parent, already_scored) or
+            scr.alreadyScored(comment, already_scored)):
             print("Already scored.")
             return
 
         # Do not allow player to score their own post, unless it's testing.
         elif not (comment.author == parent.author.name and
                   comment.author.name != AUTHOR):
-            markScored(parent)
+            scr.markScored(parent)
             playBingo(comment, getText(parent))
 
+def processOpts(argv):
+    """ Check optional arguments to import text files into database. """
+
+    global store
+
+    ACTION = None
+    OPTIONS = [
+        ["import-sqlite", "file"],
+        ["import-mysql", "file"]
+    ]
+
+    opts, usage = [],[]
+    for opt,arg in OPTIONS:
+        opts.append(opt + "=")
+        usage.append("--" + opt + " <" + arg + ">")
+    try:
+        [(option, file)] = getopt.getopt(argv[1:], "", opts)[0]
+    except getopt.GetoptError:
+        name = os.path.basename(__file__)
+        print("Usage: " + name + " [", end="")
+        print("|".join(usage) + "]")
+        exit(2)
+
+    regex = re.compile("^--import-(.+)$")
+    dbtype = regex.search(option).group(1)
+    if STORE_TYPE == dbtype:
+        ACTION = dbtype
+
+    if ACTION is not None:
+        cur = store.cursor()
+        dataf = open(file + ".txt", "r")
+        data = dataf.read().splitlines()
+        for line in data:
+            print(line)
+            stmt = "INSERT INTO " + file + " VALUES ('" + line + "')"
+            try:
+                cur.execute(stmt)
+            except:
+                print("Likely duplicate entry '" + line + "' into " + file)
+                exit()
+
+        store.commit()
+        cur.close()
+        dataf.close()
+        print("Imported " + str(len(data)) + " lines imported into " + file)
+        exit()
+
 #
-# MAIN TODO: cleanup
+# MAIN
 #
 
-if DEBUG:
-    SUBREDDIT = 'testingground4bots'
-    print("Username/pass: " + USERNAME, PASSWORD)
-    print("Client ID/pass: " + CLIENT_ID, CLIENT_SECRET)
+# Check for command line options.
+if len(sys.argv) > 1:
+    processOpts(sys.argv)
 
 # Read words and phrases, build sets of each.
 buzzwords = set()
 buzzphrases = set()
 
-for word in readData(WORDFILE):
+for word in ds.readData(store, WORD_STORE):
     buzzwords.add(word)
-    buzzwords.add(word + 's')
+    buzzwords.add(word + "s")
 
-for phrase in readData(PHRASEFILE):
+for phrase in ds.readData(store, PHRASE_STORE):
     buzzphrases.add(phrase)
 
 # Will create score file with min. value if doesn't exist.
-MATCHES = readScore()
+MATCHES = ds.readScore(store, SCORE_STORE, MIN_MATCHES)
 
 # Get comments already scored to prevent repeats and multiple plays.
-already_scored = readScored()
+already_scored = ds.readScored(store, SCORED_STORE)
 
 # Load high scores. If file does not exist, create one.
-highscores = readHighscores()
+highscores = ds.readHighscores(store, HIGHSCORES_STORE, AUTHOR)
 highscores.sort(key = lambda x: x[0], reverse = True)
 if DEBUG:
     for score, name in highscores:
         print("Name: " + name + " got " + str(score))
 
-# Initialize PRAW with custom User-Agent.
-if DEBUG:
-    print("Authenticating...")
-r = praw.Reddit(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    password=PASSWORD,
-    user_agent=BOTNAME,
-    username=USERNAME
-)
-if DEBUG:
-    print("Authenticated as: " + format(r.user.me()))
+def main():
+    """
+    1. Don't reply to the same request more than once.
+    2. Don't hit the same page more than once per 30 seconds.
+    3. Request multiple resources at once rather than single in a loop.
+    """
 
-# 1. Don't reply to the same request more than once.
-# 2. Don't hit the same page more than once per 30 seconds.
-# 3. Request multiple resources at once rather than single in a loop.
-
-sub = r.subreddit(SUBREDDIT).new()
-for submission in sub:
-    post = r.submission(submission)
-
-    for comment in post.comments:
-        if DEBUG and (comment.author != AUTHOR):
+    while True:
+        sub = r.subreddit(SUBREDDIT).new()
+        for submission in sub:
+            post = r.submission(submission)
+            for comment in post.comments:
+                if DEBUG and (comment.author != AUTHOR):
+                    break
+                checkComment(comment)
+            ds.writeScored(store, SCORED_STORE, MAX_SCORED, already_scored)
+        if not HOSTED:
             break
-        checkComment(comment)
+    store.close()
 
-    # Write list of scored comments after each submission.
-    writeScored()
+if __name__ == '__main__':
+    main()
