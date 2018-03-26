@@ -155,7 +155,8 @@ elif STORE_TYPE is "sqlite":
         exit()
 
 elif STORE_TYPE is "mysql":
-    import mysql
+    # TODO: Why isn't this module being found?
+    #import PyMySQL as mysql
     DATABASE = "buzzword"
     try:
         store = mysql.connector.connect(
@@ -173,11 +174,11 @@ else:
     exit()
 
 if not dbexists:
-        ds.createDB(store, STORE_TYPE, DATABASE, WORD_STORE, PHRASE_STORE,
-                    SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE)
-        ds.writeHighscores(store, STORE_TYPE, scr.newHighscores(SUBREDDIT, AUTHOR))
-        print("Database created. Please import word/phrases before running.")
-        exit()
+    ds.createDB(store, STORE_TYPE, DATABASE, WORD_STORE, PHRASE_STORE,
+                SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE)
+    ds.writeHighscores(store, HIGHSCORES_STORE, scr.newHighscores(SUBREDDIT, AUTHOR))
+    print("Database created. Please import word/phrases before running.")
+    exit()
 
 #
 # Replies
@@ -328,6 +329,10 @@ def checkComment (comment):
     for reply in replies:
         subcomment = r.comment(reply)
         subcomment.refresh()
+        print(subcomment)
+        # Check for deleted replies.
+        if subcomment is None:
+            continue
         checkComment(subcomment)
 
     # Process various triggers if found in comment.
@@ -344,10 +349,10 @@ def checkComment (comment):
                 MATCHES = int(tempscore)
 
         # Score the parent comment.
-        comment.refresh()
         parent = comment.parent()
-        if (scr.alreadyScored(parent, already_scored) or
-            scr.alreadyScored(comment, already_scored)):
+        if (scr.alreadyScored(parent, already_scored)):
+            # TODO: why is this failing?
+            # or scr.alreadyScored(comment, already_scored)):
             print("Already scored.")
             return
 
@@ -389,18 +394,21 @@ def processOpts(argv):
         cur = store.cursor()
         dataf = open(file + ".txt", "r")
         data = dataf.read().splitlines()
+        dataf.close()
+
         for line in data:
-            print(line)
+            if DEBUG:
+                print("Added: " + line)
             stmt = "INSERT INTO " + file + " VALUES ('" + line + "')"
             try:
                 cur.execute(stmt)
-            except:
+            except sqlite3.Error as err:
+                #except (sqlite3.Error, mysql.connector.Error) as err:
+                print(err)
                 print("Likely duplicate entry '" + line + "' into " + file)
                 exit()
-
-        store.commit()
         cur.close()
-        dataf.close()
+        store.commit()
         print("Imported " + str(len(data)) + " lines imported into " + file)
         exit()
 
@@ -416,12 +424,19 @@ if len(sys.argv) > 1:
 buzzwords = set()
 buzzphrases = set()
 
-for word in ds.readData(store, WORD_STORE):
-    buzzwords.add(word)
-    buzzwords.add(word + "s")
+try:
+    for word in ds.readData(store, WORD_STORE):
+        buzzwords.add(word)
+        buzzwords.add(word + "s")
+except Exception as err:
+    print(err)
+    exit()
 
-for phrase in ds.readData(store, PHRASE_STORE):
-    buzzphrases.add(phrase)
+try:
+    for phrase in ds.readData(store, PHRASE_STORE):
+        buzzphrases.add(phrase)
+except Exception:
+    exit()
 
 # Will create score file with min. value if doesn't exist.
 MATCHES = ds.readScore(store, SCORE_STORE, MIN_MATCHES)

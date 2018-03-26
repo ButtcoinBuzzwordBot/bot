@@ -1,4 +1,5 @@
 import sqlite3
+#import PyMySQL as mysql
 
 def createDB(*args):
     """ Create the database and tables. """
@@ -21,19 +22,20 @@ def createDB(*args):
         "CREATE TABLE " + SCORE_STORE + " (score int)",
         "INSERT INTO " + SCORE_STORE + " VALUES (" + str(MIN_MATCHES) + ")",
         ("CREATE TABLE " + HIGHSCORES_STORE +
-         " (score int NOT NULL, name VARCHAR(32) NOT NULL)")
+         " (score int NOT NULL, name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)")
     ]
     
     try:
         for stmt in stmts:
             cur.execute(stmt)
-    except (sqlite3.Error, mysql.connector.Error) as err:
+    #except (sqlite3.Error, mysql.connector.Error) as err:
+    except:
         print(err)
         print("ERROR: Cannot create tables in " + DATABASE)
         exit()
-
+    finally:
+        cur.close()
     store.commit()
-    cur.close()
 
 def readData(*args):
     """ Read words or phrases data. """
@@ -44,20 +46,21 @@ def readData(*args):
             dataf = open(name, "r")
         except:
             print("ERROR: File " + name + " does not exist.")
-            exit()
         words  = dataf.read().splitlines()
         dataf.close()
-        return(words)
 
     elif type(args[0]) is sqlite3.Connection:
+        args[0].row_factory = lambda cursor, row: row[0]
+        cur = args[0].cursor()
         try:
-            args[0].row_factory = lambda cursor, row: row[0]
-            cur = args[0].cursor()
             cur.execute("SELECT * FROM " + args[1])
-            return(cur.fetchall())
+            words = cur.fetchall()
         except sqlite3.Error:
             print("ERROR: Cannot retrieve " + args[1] + " from db.")
-            exit()
+
+    if len(words) == 0:
+        raise Exception("Empty " + args[1] + " list. Please import first.")
+    return(words)
 
 def readScore(*args: "store_name, file|table_name, default_score") -> int:
     """ Returns the current score to win. """
@@ -206,10 +209,10 @@ def writeHighscores(*args) -> None:
         try:
             cur = args[0].cursor()
             cur.execute("DELETE FROM " + args[1])
-            for score, name in args[2]:
+            for score, name, url in args[2]:
                 stmt = (
                     "INSERT INTO " + args[1] + " VALUES (" + str(score) +
-                    ", '" + name + "')"
+                    ", '" + name + "', '" + url + "')"
                 )
                 cur.execute(stmt)
         except sqlite3.Error:
