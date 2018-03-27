@@ -14,6 +14,8 @@ def createDB(*args):
     SCORE_STORE = args[6]
     MIN_MATCHES = args[7]
     HIGHSCORES_STORE = args[8]
+    KOAN_STORE = args[9]
+    HAIKU_STORE = args[10]
     
     stmts = [
         "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) UNIQUE NOT NULL)",
@@ -22,7 +24,9 @@ def createDB(*args):
         "CREATE TABLE " + SCORE_STORE + " (score int)",
         "INSERT INTO " + SCORE_STORE + " VALUES (" + str(MIN_MATCHES) + ")",
         ("CREATE TABLE " + HIGHSCORES_STORE +
-         " (score int NOT NULL, name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)")
+         " (score int NOT NULL, name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)"),
+        "CREATE TABLE " + KOAN_STORE + " (koan TEXT NOT NULL)",
+        "CREATE TABLE " + HAIKU_STORE + " (haiku TEXT NOT NULL)"
     ]
     
     try:
@@ -57,11 +61,34 @@ def readData(*args):
             words = cur.fetchall()
         except sqlite3.Error:
             print("ERROR: Cannot retrieve " + args[1] + " from db.")
+        finally:
+            cur.close()
 
     if len(words) == 0:
         raise Exception("Empty " + args[1] + " list. Please import first.")
     return(words)
 
+def readRandom(*args):
+    """ Gets a random row from a table. """
+
+    if args[0] is "file":
+        print("Not implemented yet.")
+
+    elif type(args[0]) is sqlite3.Connection:
+        args[0].row_factory = None
+        cur = args[0].cursor()
+        try:
+            cur.execute("SELECT * FROM " + args[1] + " ORDER BY RANDOM() LIMIT 1")
+            data = cur.fetchall()
+            if data is None:
+                print("ERROR: Please import " + args[1] + " into database.")
+                exit()
+            return(data[0][0])
+        except sqlite3.Error:
+            print("ERROR: Cannot retrieve " + args[1] + " from db.")
+        finally:
+            cur.close()
+        
 def readScore(*args: "store_name, file|table_name, default_score") -> int:
     """ Returns the current score to win. """
 
@@ -101,7 +128,7 @@ def writeScore(*args) -> None:
             print("ERROR: Can't write " + name)
         scoref.close()
 
-    elif type(store) is sqlite3.Connection:
+    elif type(args[0]) is sqlite3.Connection:
         try:
             cur = args[0].cursor()
             cur.execute("UPDATE " + args[1] + " SET score=" + score)
@@ -177,7 +204,7 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
                 highscores = pickle.load(f)
         else:
             for i in range (0,3):
-                highscores.append((i + 1, "/u/" + author))
+                highscores.append((i + 1, "/u/" + author), "/u/" + author)
             with open(name, "wb") as f:
                 pickle.dump(highscores, f)
         f.close()
@@ -187,7 +214,7 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
         try:
             args[0].row_factory = None
             cur = args[0].cursor()
-            cur.execute("SELECT score,name FROM " + args[1])
+            cur.execute("SELECT score,name,url FROM " + args[1])
             return(cur.fetchall())
         except sqlite3.Error:
             print("ERROR: Cannot read scored comments from " + args[1])

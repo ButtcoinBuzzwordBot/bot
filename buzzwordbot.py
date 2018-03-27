@@ -2,8 +2,12 @@
 # TODO: Figure out Dogecoin or something useless to award monthly winners.
 # TODO: mysql, memcache support
 # TODO: link to the posts that generated the winning scores
+#  Use format like: https://redd.it/87fwu1
 # TODO: Add "already played" message? When parent replied, check replies?
-# TODO: Randomize win/loss comments and insults.
+# TODO: Randomize win/loss comments and insults?
+# FIX: not scoring original post, only replies.
+# FIX: crossposts?
+# TEST: scraping links in title
 
 import sys
 import getopt
@@ -27,7 +31,7 @@ import scoring as scr
 # When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
 # to customize the bot, along with the words and phrases files. By default the
 # AUTHOR can compete but highscores will not be registered, to keep the game
-# fair.
+# fair
 
 DEBUG = True
 AUTHOR = "BarcaloungerJockey"
@@ -40,6 +44,8 @@ MAX_MATCHES = 12
 SCORE_STORE = "score"
 WORD_STORE = "words"
 PHRASE_STORE = "phrases"
+KOAN_STORE = "koans"
+HAIKU_STORE = "haiku"
 
 # If HOSTED is True the script continues looping. Set appropriate storage type and
 # info based on your hosting options.
@@ -47,9 +53,9 @@ HOSTED = False
 STORE_TYPE = "sqlite"
 #STORE_TYPE = "file"
 #STORE_TYPE = "mysql"
-MYSQL_USER = "user"
-MYSQL_PW = "password"
-MYSQL_HOST = "127.0.0.1"
+#MYSQL_USER = "user"
+#MYSQL_PW = "password"
+#MYSQL_HOST = "127.0.0.1"
 
 # Reddit account and API OAuth information. You can hardcode values here but
 # it creates a security risk if your code is public (on Github, etc.)
@@ -67,6 +73,8 @@ RATELIMIT = 30
 TRIGGER = "!BuzzwordBingo"
 CMD_HS = TRIGGER + " highscores"
 CMD_SCORE = TRIGGER + " score"
+CMD_KOAN = TRIGGER + " koan"
+CMD_HAIKU = TRIGGER + " haiku"
 
 # Limit of scored comments saved to skip.
 MAX_SCORED = 300
@@ -79,7 +87,7 @@ HIGHSCORES_STORE = "highscores"
 # Signature for all replies.
 sig = (
     "\n_____\n\n^(I\'m a hand-run bot, *bleep* *bloop* "
-    "| Send love, rage or doge to /u/" + AUTHOR + ", *beep*)"
+    "| Send praise, rage or arcade game tokens to /u/" + AUTHOR + ", *beep*)"
 )
 
 # Highscore report reply.
@@ -175,7 +183,8 @@ else:
 
 if not dbexists:
     ds.createDB(store, STORE_TYPE, DATABASE, WORD_STORE, PHRASE_STORE,
-                SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE)
+                SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE,
+                KOAN_STORE, HAIKU_STORE)
     ds.writeHighscores(store, HIGHSCORES_STORE, scr.newHighscores(SUBREDDIT, AUTHOR))
     print("Database created. Please import word/phrases before running.")
     exit()
@@ -214,7 +223,7 @@ def postReply (post, reply):
     else:
         print("X", end="")
 
-    scr.markScored(post)
+    scr.markScored(post, already_scored)
     newcomment = None
     try:
         newcomment = post.reply(reply + sig)
@@ -257,12 +266,13 @@ def getMatches(text):
 def playBingo (comment, text):
     """ Check if we've already replied, score text and reply. """
 
+    if len(text) == 0:
+        return
     matches_found = getMatches(text)
 
     # Check highscores. Post reply to comment then wait out RATELIMIT.
-    print(vars(comment))
-    exit()
-    scr.updateHighscores(len(matches_found), comment.author.name, url, highscores)
+    scr.updateHighscores(len(matches_found), comment.author.name, url, highscores,
+                         HIGHSCORES_STORE, MAX_HIGHSCORES, AUTHOR, COMPETE)
     ds.writeHighscores(store, HIGHSCORES_STORE, highscores)
 
     reply = getReply(matches_found)
@@ -294,20 +304,32 @@ def getText (parent):
     if text is None or text is "":
         # Try to get text from linked post in title.
         try:
-            url = parent.url
-            regex = re.compile("^(http[s]*://[^\s]+)")
-            link = regex.search(comment.body).group(1)
-            ignore_tags = ["style", "script", "[document]", "head", "title"]
+            link = parent.url
+            if link.find(".pdf", len(link) -4):
+                print("Skipping PDF file.")
+                return(text)
+
+            # TODO: test and clean up
+            #regex = re.compile("^(http[s]*://[^\s]+)")
+            #link = regex.search(comment.body).group(1)
+            #ignore_tags = [
+            #    "style", "script", "[document]", "head", "title", "link", "meta"
+            #]
             if link is not None:
                 try:
                     with urllib.request.urlopen(link) as response:
                         html = response.read()
-                        soup = bs4.BeautifulSoup(html, "html.parser")
-                    text = [s.extract() for s in soup(ignore_tags)]
+                        try:
+                            soup = bs4.BeautifulSoup(html, "html.parser")
+                        except html.HTMLParser.HTMLParseError:
+                            print("Unable to parse page, skipping.")
+                            return(text)
+                    text = soup.find('body').getText()
+                    #text = [s.extract() for s in soup(ignore_tags)]
                 except urllib.error.HTTPError:
                     postReply(comment, blockedReply(link))
             else:
-                print("\nEmpty link, this shouldn't happen.")
+                print("\nERROR: Empty link, this shouldn't happen.")
                 exit()
         except AttributeError:
             print("\nERROR: Not implemented yet, skipping.")
@@ -320,7 +342,7 @@ def checkComment (comment):
     
     if DEBUG:
         print("comment: " + format(comment))
-    else:
+    elif not HOSTED:
         print(".", end="", flush=True)
     comment.refresh()
     replies = comment.replies
@@ -329,18 +351,21 @@ def checkComment (comment):
     for reply in replies:
         subcomment = r.comment(reply)
         subcomment.refresh()
-        print(subcomment)
-        # Check for deleted replies.
-        if subcomment is None:
-            continue
         checkComment(subcomment)
 
     # Process various triggers if found in comment.
-    if (CMD_HS in comment.body):
-        if scr.alreadyScored(comment, already_scored):
+    if (TRIGGER in comment.body):
+        if scr.alreadyScored(r, comment, already_scored, USERNAME):
             return
-        postReply(comment, highscoresReply(highscores))
 
+    if (CMD_HS in comment.body):
+        postReply(comment, highscoresReply(highscores))
+    elif (CMD_KOAN in comment.body):
+        reply = ds.readRandom(store, KOAN_STORE)
+        postReply(comment, reply)
+    elif (CMD_HAIKU in comment.body):
+        reply = ds.readRandom(store, HAIKU_STORE)
+        postReply(comment, reply)
     elif (TRIGGER in comment.body):
         if CMD_SCORE in comment.body:
             regex = re.compile(CMD_SCORE + "\s+([0-9]+)\s*")
@@ -350,16 +375,13 @@ def checkComment (comment):
 
         # Score the parent comment.
         parent = comment.parent()
-        if (scr.alreadyScored(parent, already_scored)):
-            # TODO: why is this failing?
-            # or scr.alreadyScored(comment, already_scored)):
-            print("Already scored.")
+        if scr.alreadyScored(r, parent, already_scored, USERNAME):
             return
 
         # Do not allow player to score their own post, unless it's testing.
         elif not (comment.author == parent.author.name and
                   comment.author.name != AUTHOR):
-            scr.markScored(parent)
+            scr.markScored(parent, already_scored)
             playBingo(comment, getText(parent))
 
 def processOpts(argv):
@@ -367,16 +389,21 @@ def processOpts(argv):
 
     global store
 
-    ACTION = None
     OPTIONS = [
-        ["import-sqlite", "file"],
-        ["import-mysql", "file"]
+        ["import", "file"],
+        ["import-koans", "file"],
+        ["import-haiku", "file"]
     ]
 
     opts, usage = [],[]
     for opt,arg in OPTIONS:
-        opts.append(opt + "=")
-        usage.append("--" + opt + " <" + arg + ">")
+        syntax = "--" + opt
+        if arg is not "":
+            syntax += " <" + arg + ">"
+            opt += "="
+        opts.append(opt)
+        usage.append(syntax)
+
     try:
         [(option, file)] = getopt.getopt(argv[1:], "", opts)[0]
     except getopt.GetoptError:
@@ -385,32 +412,46 @@ def processOpts(argv):
         print("|".join(usage) + "]")
         exit(2)
 
-    regex = re.compile("^--import-(.+)$")
-    dbtype = regex.search(option).group(1)
-    if STORE_TYPE == dbtype:
-        ACTION = dbtype
+    table = argv[2]
+    if table == "koans":
+        try:
+            CMD_KOAN
+        except NameError:
+            print("Koans are disabled. Please set CMD_KOAN to use.")
+            exit()
+    elif table == "haiku":
+        try:
+            CMD_HAIKU
+        except NameError:
+            print("Haiku are disabled. Please set CMD_HAIKU to use.")
+            exit()
 
-    if ACTION is not None:
-        cur = store.cursor()
-        dataf = open(file + ".txt", "r")
-        data = dataf.read().splitlines()
-        dataf.close()
+    dataf = open(table + ".txt", "r")
+    rawdata = dataf.read()
+    dataf.close()
+    if table == "words" or table == "phrases":
+        data = rawdata.splitlines()
+    else:
+        data = rawdata.split("|")
 
-        for line in data:
-            if DEBUG:
-                print("Added: " + line)
-            stmt = "INSERT INTO " + file + " VALUES ('" + line + "')"
-            try:
-                cur.execute(stmt)
-            except sqlite3.Error as err:
-                #except (sqlite3.Error, mysql.connector.Error) as err:
-                print(err)
-                print("Likely duplicate entry '" + line + "' into " + file)
-                exit()
-        cur.close()
-        store.commit()
-        print("Imported " + str(len(data)) + " lines imported into " + file)
-        exit()
+    cur = store.cursor()
+    for line in data:
+        if DEBUG:
+            print("Adding: " + line)
+        if table == "haiku":
+            line = line.replace("\n", "  \n")
+        stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
+        try:
+            cur.execute(stmt)
+        except sqlite3.Error as err:
+            #except (sqlite3.Error, mysql.connector.Error) as err:
+            print(err)
+            print("Likely duplicate entry '" + line + "' into " + table)
+            exit()
+    cur.close()
+    store.commit()
+    print("Imported " + str(len(data)) + " lines imported into " + table)
+    exit()
 
 #
 # MAIN
@@ -419,6 +460,13 @@ def processOpts(argv):
 # Check for command line options.
 if len(sys.argv) > 1:
     processOpts(sys.argv)
+
+# Check bot inbox to see if there's messages.
+msgs = list(r.inbox.unread(limit=None))
+if len(msgs) > 0 and not HOSTED:
+    print(str(len(msgs)) + " message(s) in /u/" + USERNAME + "\'s inbox.")
+    print("Please read before running bot.")
+    exit()
 
 # Read words and phrases, build sets of each.
 buzzwords = set()
@@ -448,8 +496,8 @@ already_scored = ds.readScored(store, SCORED_STORE)
 highscores = ds.readHighscores(store, HIGHSCORES_STORE, AUTHOR)
 highscores.sort(key = lambda x: x[0], reverse = True)
 if DEBUG:
-    for score, name in highscores:
-        print("Name: " + name + " got " + str(score))
+    for score, name, url in highscores:
+        print("Name: " + name + " got " + str(score) + " (" + url + ")")
 
 def main():
     """
