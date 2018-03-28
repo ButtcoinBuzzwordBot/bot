@@ -5,9 +5,9 @@
 #  Use format like: https://redd.it/87fwu1
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
-# FIX: not scoring original post, only replies.
-# FIX: crossposts?
-# TEST: scraping links in title
+# FIX: not scoring original post, only replies?
+#
+# TODO NOW: consolidate new/update/writeHighscores(). Should be new/read/write.
 
 import sys
 import getopt
@@ -23,6 +23,8 @@ import urllib
 
 import datastore as ds
 import scoring as scr
+import comments as cmt
+import cmdline
 
 #
 # SETTINGS.
@@ -37,10 +39,11 @@ DEBUG = True
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
-REDDIT = "http://reddit.com"
+REDDIT = "https://redd.it/"
 SUBREDDIT = "buttcoin"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+
 SCORE_STORE = "score"
 WORD_STORE = "words"
 PHRASE_STORE = "phrases"
@@ -66,8 +69,8 @@ CLIENT_ID = os.environ['CLIENT_ID']
 CLIENT_SECRET = os.environ['CLIENT_SECRET']
 
 # Start rate limit at 600 (10 minutes) per reply for a bot account w/no karma.
-# Drops quickly as karma increases, can go down to 30 seconds minimum.
-RATELIMIT = 30
+# Drops quickly as karma increases, can go down to 10 seconds minimum.
+RATELIMIT = 10
 
 # Triggers which active the bot to reply to a comment.
 TRIGGER = "!BuzzwordBingo"
@@ -124,7 +127,7 @@ def blockedReply(link):
     )
 
 # TODO: going to use this? Gotta make sure it's posted only once.
-ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
+#ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
 
 #
 # END OF SETTINGS.
@@ -143,8 +146,7 @@ r = praw.Reddit(
     user_agent=BOTNAME,
     username=USERNAME
 )
-if DEBUG:
-    print("Authenticated as: " + format(r.user.me()))
+if DEBUG: print("Authenticated as: " + format(r.user.me()))
 
 dbexists = True
 if STORE_TYPE is "file":
@@ -185,50 +187,9 @@ if not dbexists:
     ds.createDB(store, STORE_TYPE, DATABASE, WORD_STORE, PHRASE_STORE,
                 SCORED_STORE, SCORE_STORE, MIN_MATCHES, HIGHSCORES_STORE,
                 KOAN_STORE, HAIKU_STORE)
-    ds.writeHighscores(store, HIGHSCORES_STORE, scr.newHighscores(SUBREDDIT, AUTHOR))
+    ds.writeHighscores(store, HIGHSCORES_STORE, scr.newHighscores(AUTHOR))
     print("Database created. Please import word/phrases before running.")
     exit()
-
-#
-# Replies
-#
-
-def getReply (matches):
-    """ Create a reply for win/loss, and updates minimum score required. """
-
-    global MATCHES
-
-    if len(matches) >= MATCHES:
-        reply = winnerReply(matches)
-    else:
-        reply = loserReply(MATCHES)
-
-    # Raise or lower the current score to win accordingly.
-    if len(matches) > MATCHES:
-        if MATCHES < MAX_MATCHES:
-            MATCHES += 1
-    else:
-        if MATCHES > MIN_MATCHES:
-            MATCHES -= 1
-    ds.writeScore(STORE_TYPE, SCORE_STORE, MATCHES)
-    return (reply)
-
-def postReply (post, reply):
-    """ Add the post to list of scored, post reply. """
-
-    global RATELIMIT, sig, already_scored
-
-    if DEBUG:
-        print(reply)
-    else:
-        print("X", end="")
-
-    scr.markScored(post, already_scored)
-    newcomment = None
-    try:
-        newcomment = post.reply(reply + sig)
-    except praw.exceptions.APIException as err:
-        print(err)
 
 #
 # Bingo
@@ -266,192 +227,16 @@ def getMatches(text):
 def playBingo (comment, text):
     """ Check if we've already replied, score text and reply. """
 
+    global HIGHSCORES_STORE, MAX_HIGHSCORES, AUTHOR, COMPETE, REDDIT
+    
     if len(text) == 0:
         return
     matches_found = getMatches(text)
-
-    # Check highscores. Post reply to comment then wait out RATELIMIT.
-    scr.updateHighscores(len(matches_found), comment.author.name, url, highscores,
-                         HIGHSCORES_STORE, MAX_HIGHSCORES, AUTHOR, COMPETE)
-    ds.writeHighscores(store, HIGHSCORES_STORE, highscores)
-
-    reply = getReply(matches_found)
-    postReply(comment, reply)
-
-#
-# Comments
-#
-
-def getText (parent):
-    """ Retrieve text from a variety of possible sources: original or crosspost,
-    relies themselves, and linked Reddit posts.
-    """
-    
-    # Try to get text from original post.
-    try:
-        text = parent.selftext
-    except AttributeError:
-        # Try to get body of a comment.
-        try:
-            text = parent.body
-        except:
-            # Try to get text from a crosspost. 
-            try:
-                text = parent.crosspost_parent_list[0]['selftext']
-            except AttributeError:
-                print("ERROR: Unsupported or broken post reference.")
-                
-    if text is None or text is "":
-        # Try to get text from linked post in title.
-        try:
-            link = parent.url
-            if link.find(".pdf", len(link) -4):
-                print("Skipping PDF file.")
-                return(text)
-
-            # TODO: test and clean up
-            #regex = re.compile("^(http[s]*://[^\s]+)")
-            #link = regex.search(comment.body).group(1)
-            #ignore_tags = [
-            #    "style", "script", "[document]", "head", "title", "link", "meta"
-            #]
-            if link is not None:
-                try:
-                    with urllib.request.urlopen(link) as response:
-                        html = response.read()
-                        try:
-                            soup = bs4.BeautifulSoup(html, "html.parser")
-                        except html.HTMLParser.HTMLParseError:
-                            print("Unable to parse page, skipping.")
-                            return(text)
-                    text = soup.find('body').getText()
-                    #text = [s.extract() for s in soup(ignore_tags)]
-                except urllib.error.HTTPError:
-                    postReply(comment, blockedReply(link))
-            else:
-                print("\nERROR: Empty link, this shouldn't happen.")
-                exit()
-        except AttributeError:
-            print("\nERROR: Not implemented yet, skipping.")
-    return(text)
-
-def checkComment (comment):
-    """ Check a comment or post for the invocation keyword. """
-
-    global USERNAME, MATCHES, highscores, already_scored
-    
-    if DEBUG:
-        print("comment: " + format(comment))
-    elif not HOSTED:
-        print(".", end="", flush=True)
-    comment.refresh()
-    replies = comment.replies
-
-    # Traverse comment forest (trees.)
-    for reply in replies:
-        subcomment = r.comment(reply)
-        subcomment.refresh()
-        checkComment(subcomment)
-
-    # Process various triggers if found in comment.
-    if (TRIGGER in comment.body):
-        if scr.alreadyScored(r, comment, already_scored, USERNAME):
-            return
-
-    if (CMD_HS in comment.body):
-        postReply(comment, highscoresReply(highscores))
-    elif (CMD_KOAN in comment.body):
-        reply = ds.readRandom(store, KOAN_STORE)
-        postReply(comment, reply)
-    elif (CMD_HAIKU in comment.body):
-        reply = ds.readRandom(store, HAIKU_STORE)
-        postReply(comment, reply)
-    elif (TRIGGER in comment.body):
-        if CMD_SCORE in comment.body:
-            regex = re.compile(CMD_SCORE + "\s+([0-9]+)\s*")
-            tempscore = regex.search(comment.body).group(1)
-            if tempscore is not None:
-                MATCHES = int(tempscore)
-
-        # Score the parent comment.
-        parent = comment.parent()
-        if scr.alreadyScored(r, parent, already_scored, USERNAME):
-            return
-
-        # Do not allow player to score their own post, unless it's testing.
-        elif not (comment.author == parent.author.name and
-                  comment.author.name != AUTHOR):
-            scr.markScored(parent, already_scored)
-            playBingo(comment, getText(parent))
-
-def processOpts(argv):
-    """ Check optional arguments to import text files into database. """
-
-    global store
-
-    OPTIONS = [
-        ["import", "file"],
-        ["import-koans", "file"],
-        ["import-haiku", "file"]
-    ]
-
-    opts, usage = [],[]
-    for opt,arg in OPTIONS:
-        syntax = "--" + opt
-        if arg is not "":
-            syntax += " <" + arg + ">"
-            opt += "="
-        opts.append(opt)
-        usage.append(syntax)
-
-    try:
-        [(option, file)] = getopt.getopt(argv[1:], "", opts)[0]
-    except getopt.GetoptError:
-        name = os.path.basename(__file__)
-        print("Usage: " + name + " [", end="")
-        print("|".join(usage) + "]")
-        exit(2)
-
-    table = argv[2]
-    if table == "koans":
-        try:
-            CMD_KOAN
-        except NameError:
-            print("Koans are disabled. Please set CMD_KOAN to use.")
-            exit()
-    elif table == "haiku":
-        try:
-            CMD_HAIKU
-        except NameError:
-            print("Haiku are disabled. Please set CMD_HAIKU to use.")
-            exit()
-
-    dataf = open(table + ".txt", "r")
-    rawdata = dataf.read()
-    dataf.close()
-    if table == "words" or table == "phrases":
-        data = rawdata.splitlines()
-    else:
-        data = rawdata.split("|")
-
-    cur = store.cursor()
-    for line in data:
-        if DEBUG:
-            print("Adding: " + line)
-        if table == "haiku":
-            line = line.replace("\n", "  \n")
-        stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
-        try:
-            cur.execute(stmt)
-        except sqlite3.Error as err:
-            #except (sqlite3.Error, mysql.connector.Error) as err:
-            print(err)
-            print("Likely duplicate entry '" + line + "' into " + table)
-            exit()
-    cur.close()
-    store.commit()
-    print("Imported " + str(len(data)) + " lines imported into " + table)
-    exit()
+    scr.updateHighscores(len(matches_found), comment, highscores)
+    #scr.updateHighscores(len(matches_found), comment, highscores, HIGHSCORES_STORE,
+    #                     MAX_HIGHSCORES, AUTHOR, COMPETE, REDDIT)
+    reply = cmt.getReply(matches_found)
+    cmt.postReply(comment, reply)
 
 #
 # MAIN
@@ -461,12 +246,12 @@ def processOpts(argv):
 if len(sys.argv) > 1:
     processOpts(sys.argv)
 
-# Check bot inbox to see if there's messages.
+# Check bot inbox for messages.
 msgs = list(r.inbox.unread(limit=None))
 if len(msgs) > 0 and not HOSTED:
     print(str(len(msgs)) + " message(s) in /u/" + USERNAME + "\'s inbox.")
     print("Please read before running bot.")
-    exit()
+    if len(msgs) > 12: exit()
 
 # Read words and phrases, build sets of each.
 buzzwords = set()
@@ -511,8 +296,7 @@ def main():
         for submission in sub:
             post = r.submission(submission)
             for comment in post.comments:
-                if DEBUG and (comment.author != AUTHOR):
-                    break
+                if DEBUG and (comment.author != AUTHOR): break
                 checkComment(comment)
             ds.writeScored(store, SCORED_STORE, MAX_SCORED, already_scored)
         if not HOSTED:

@@ -203,8 +203,8 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
             with open(name, "rb") as f:
                 highscores = pickle.load(f)
         else:
-            for i in range (0,3):
-                highscores.append((i + 1, "/u/" + author), "/u/" + author)
+            # TODO: standardize new/read/write highscores, default URL
+            highscores = scr.newHighscores("", SUBREDDIT, author)
             with open(name, "wb") as f:
                 pickle.dump(highscores, f)
         f.close()
