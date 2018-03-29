@@ -25,8 +25,8 @@ def createDB(*args):
     try:
         for stmt in stmts:
             cur.execute(stmt)
-    #except (sqlite3.Error, mysql.connector.Error) as err:
-    except:
+    # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
+    except sqlite3.Error:
         print(err)
         print("ERROR: Cannot create tables in " + cfg.DATABASE)
         exit()
