@@ -1,5 +1,7 @@
 import sqlite3
-#import PyMySQL as mysql
+# TODO: import PyMySQL as mysql
+
+import config as cfg
 
 def createDB(*args):
     """ Create the database and tables. """
@@ -7,26 +9,17 @@ def createDB(*args):
     store = args[0]
     cur = store.cursor()
     dbtype = args[1]
-    DATABASE = args[2]
-    WORD_STORE = args[3]
-    PHRASE_STORE = args[4]
-    SCORED_STORE = args[5]
-    SCORE_STORE = args[6]
-    MIN_MATCHES = args[7]
-    HIGHSCORES_STORE = args[8]
-    KOAN_STORE = args[9]
-    HAIKU_STORE = args[10]
     
     stmts = [
-        "CREATE TABLE " + WORD_STORE + " (word VARCHAR(64) UNIQUE NOT NULL)",
-        "CREATE TABLE " + PHRASE_STORE + " (phrase VARCHAR(255) UNIQUE NOT NULL)",
-        "CREATE TABLE " + SCORED_STORE + " (scored VARCHAR(16) NOT NULL)",
-        "CREATE TABLE " + SCORE_STORE + " (score int)",
-        "INSERT INTO " + SCORE_STORE + " VALUES (" + str(MIN_MATCHES) + ")",
-        ("CREATE TABLE " + HIGHSCORES_STORE +
+        "CREATE TABLE " + cfg.WORD_STORE + " (word VARCHAR(64) UNIQUE NOT NULL)",
+        "CREATE TABLE " + cfg.PHRASE_STORE + " (phrase VARCHAR(255) UNIQUE NOT NULL)",
+        "CREATE TABLE " + cfg.SCORED_STORE + " (scored VARCHAR(16) NOT NULL)",
+        "CREATE TABLE " + cfg.SCORE_STORE + " (score int)",
+        "INSERT INTO " + cfg.SCORE_STORE + " VALUES (" + str(cfg.MIN_MATCHES) + ")",
+        ("CREATE TABLE " + cfg.HIGHSCORES_STORE +
          " (score int NOT NULL, name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)"),
-        "CREATE TABLE " + KOAN_STORE + " (koan TEXT NOT NULL)",
-        "CREATE TABLE " + HAIKU_STORE + " (haiku TEXT NOT NULL)"
+        "CREATE TABLE " + cfg.KOAN_STORE + " (koan TEXT NOT NULL)",
+        "CREATE TABLE " + cfg.HAIKU_STORE + " (haiku TEXT NOT NULL)"
     ]
     
     try:
@@ -35,7 +28,7 @@ def createDB(*args):
     #except (sqlite3.Error, mysql.connector.Error) as err:
     except:
         print(err)
-        print("ERROR: Cannot create tables in " + DATABASE)
+        print("ERROR: Cannot create tables in " + cfg.DATABASE)
         exit()
     finally:
         cur.close()
@@ -118,14 +111,14 @@ def readScore(*args: "store_name, file|table_name, default_score") -> int:
 def writeScore(*args) -> None:
     """ Saves the current score to win. """
 
-    score = str(args[2])
+    score = str(cfg.MATCHES)
     if args[0] is "file":
         name = args[1] + ".txt"
         try:
             scoref = open(name, "w")
             scoref.write(score)
         except:
-            print("ERROR: Can't write " + name)
+            print("ERROR: Can't write scores to " + name)
         scoref.close()
 
     elif type(args[0]) is sqlite3.Connection:
@@ -133,7 +126,7 @@ def writeScore(*args) -> None:
             cur = args[0].cursor()
             cur.execute("UPDATE " + args[1] + " SET score=" + score)
         except sqlite3.Error:
-            print("ERROR: Cannot update score in db.")
+            print("ERROR: Cannot update " + args[1] + " in db.")
             exit()
         args[0].commit()
 
@@ -161,14 +154,13 @@ def readScored(*args) -> list:
             print("ERROR: Cannot read scored comments from " + args[1])
             exit()
 
-def writeScored(*args: "store_type, file|table_name, max_score, already_scored[]"):
+
+def writeScored(*args):
     """ Saves list of posts already scored/replied to. """
     
-    maxscored = args[2]
-    already_scored = args[3]
-    length = len(already_scored)
-    if length > maxscored:
-        already_scored = already_scored[length - maxscored, length]
+    length = len(cfg.already_scored)
+    if length > cfg.MAX_MATCHES:
+        already_scored = cfg.already_scored[length - cfg.MAX_MATCHES:length]
 
     if args[0] is "file":
         name = args[1] + ".txt"
@@ -177,14 +169,14 @@ def writeScored(*args: "store_type, file|table_name, max_score, already_scored[]
         except:
             print("ERROR: Cannot write to " + name)
             exit()
-        scoredf.writelines(("\n".join(already_scored)) + "\n")
+        scoredf.writelines(("\n".join(cfg.already_scored)) + "\n")
         scoredf.close()
 
     elif type(args[0]) is sqlite3.Connection:
         try:
             cur = args[0].cursor()
             cur.execute("DELETE FROM " + args[1])
-            for scored in already_scored:
+            for scored in cfg.already_scored:
                 stmt = "INSERT INTO " + args[1] + " VALUES ('" + scored + "')"
                 cur.execute(stmt)
         except sqlite3.Error:
@@ -195,7 +187,6 @@ def writeScored(*args: "store_type, file|table_name, max_score, already_scored[]
 def readHighscores(*args: "store_type, file|table_name, author") -> list:
     """ Retrieves list of highscores. """
 
-    highscores = []
     author = args[2]
     if args[0] is "file":
         name = args[1] + ".txt"
@@ -203,12 +194,11 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
             with open(name, "rb") as f:
                 highscores = pickle.load(f)
         else:
-            # TODO: standardize new/read/write highscores, default URL
-            highscores = scr.newHighscores("", SUBREDDIT, author)
+            cfg.highscores = scr.newHighscores("", cfg.SUBREDDIT, author)
             with open(name, "wb") as f:
-                pickle.dump(highscores, f)
+                pickle.dump(cfg.highscores, f)
         f.close()
-        return(highscores)
+        return(cfg.highscores)
 
     elif type(args[0]) is sqlite3.Connection:
         try:
@@ -217,7 +207,7 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
             cur.execute("SELECT score,name,url FROM " + args[1])
             return(cur.fetchall())
         except sqlite3.Error:
-            print("ERROR: Cannot read scored comments from " + args[1])
+            print("ERROR: Cannot read highscores from " + args[1])
             exit()
 
 def writeHighscores(*args) -> None:
@@ -227,7 +217,7 @@ def writeHighscores(*args) -> None:
         name = args[1] + ".txt"
         try:
             with open(name, "wb") as f:
-                pickle.dump(args[2], f)
+                pickle.dump(cfg.highscores, f)
         except:
             print("ERROR: Cannot write to file " + name)
         f.close()
@@ -236,13 +226,13 @@ def writeHighscores(*args) -> None:
         try:
             cur = args[0].cursor()
             cur.execute("DELETE FROM " + args[1])
-            for score, name, url in args[2]:
+            for score, name, url in cfg.highscores:
                 stmt = (
                     "INSERT INTO " + args[1] + " VALUES (" + str(score) +
                     ", '" + name + "', '" + url + "')"
                 )
                 cur.execute(stmt)
         except sqlite3.Error:
-            print("ERROR: Cannot write to " + args[1] + " table.")
+            print("ERROR: Cannot write highscores to " + args[1] + " table.")
             exit()
         args[0].commit()

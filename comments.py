@@ -1,39 +1,43 @@
+import time
+import re
+
+import praw
+import urllib
+import bs4
+
+import config as cfg
 import datastore as ds
 import scoring as scr
 
 def getReply (*args):
     """ Create a reply for win/loss, and updates minimum score required. """
 
-    global STORE_TYPE, SCORE_STORE, MIN_MATCHES, MAX_MATCHES
     matches = args[0]
-    score = args[1]
 
-    if len(matches) >= score:
-        reply = winnerReply(matches)
-        if score < MAX_MATCHES:
-            score += 1
+    if len(matches) >= cfg.MATCHES:
+        reply = cfg.winnerReply(matches)
+        if cfg.MATCHES < cfg.MAX_MATCHES:
+            cfg.MATCHES += 1
     else:
-        reply = loserReply(score)
-        if score > MIN_MATCHES:
-            score -= 1
-    ds.writeScore(STORE_TYPE, SCORE_STORE, score)
+        reply = cfg.loserReply(cfg.MATCHES)
+        if cfg.MATCHES > cfg.MIN_MATCHES:
+            cfg.MATCHES -= 1
+    ds.writeScore(cfg.STORE_TYPE, cfg.SCORE_STORE)
     return (reply)
 
 def postReply (*args):
-    """ Add the post to list of scored, post reply. """
+    """ Add the post to list of scored, post reply. h"""
 
-    global RATELIMIT, sig
     post = args[0]
     reply = args[1]
-    already_scored = args[2]
 
-    if DEBUG: print(reply)
+    if cfg.DEBUG: print("Posting reply:\n" + reply)
     else: print("X", end="")
 
-    scr.markScored(post, already_scored)
+    scr.markScored(post)
     try:
-        post.reply(reply + sig)
-        time.sleep(RATELIMIT)
+        post.reply(reply + cfg.sig)
+        time.sleep(cfg.RATELIMIT)
     except praw.exceptions.APIException as err:
         print(err)
 
@@ -44,6 +48,7 @@ def getText (*args):
     """
 
     parent = args[0]
+
     # Try to get text from original post.
     try:
         text = parent.selftext
@@ -62,8 +67,9 @@ def getText (*args):
         # Try to get text from link in title, skip PDF.
         try:
             link = parent.url
-            if link.find(".pdf", len(link) -4) and DEBUG:
-                return(text)
+            if cfg.DEBUG: print("link: " + link)
+            if link.find(".pdf", len(link) -4)!= -1: return(None)
+            
             if link is not None:
                 try:
                     with urllib.request.urlopen(link) as response:
@@ -71,11 +77,13 @@ def getText (*args):
                         try:
                             soup = bs4.BeautifulSoup(html, "html.parser")
                         except html.HTMLParser.HTMLParseError:
-                            if DEBUG: print("\nERROR: Unable to parse page, skipping.")
+                            if cfg.DEBUG:
+                                print("\nERROR: Unable to parse page, skipping.")
                             return(text)
                     text = soup.find('body').getText()
+                    return(text)
                 except urllib.error.HTTPError:
-                    postReply(comment, blockedReply(link))
+                    postReply(comment, cfg.blockedReply(link))
             else:
                 print("\nERROR: Empty link, this shouldn't happen.")
                 exit()
@@ -86,13 +94,12 @@ def getText (*args):
 def checkComment (*args):
     """ Check a comment or post for the invocation keyword. """
 
-    global USERNAME, needed, highscores, already_scored
-    comment = args[0]
-    
-    if DEBUG:
-        print("comment: " + format(comment))
-    elif not HOSTED:
-        print(".", end="", flush=True)
+    store = args[0]
+    r = args[1]
+    comment = args[2]
+
+    if cfg.DEBUG: print("comment: " + format(comment))
+    elif not cfg.HOSTED: print(".", end="", flush=True)
     comment.refresh()
     replies = comment.replies
 
@@ -100,35 +107,31 @@ def checkComment (*args):
     for reply in replies:
         subcomment = r.comment(reply)
         subcomment.refresh()
-        checkComment(subcomment)
+        checkComment(store, r, subcomment)
 
     # Process various triggers if found in comment.
-    if (TRIGGER in comment.body):
-        if scr.alreadyScored(r, comment, already_scored, USERNAME):
-            return
+    if (cfg.TRIGGER in comment.body):
+        if scr.alreadyScored(r, comment): return
 
-    if (CMD_HS in comment.body):
-        postReply(comment, highscoresReply(highscores))
-    elif (CMD_KOAN in comment.body):
-        reply = ds.readRandom(store, KOAN_STORE)
-        postReply(comment, reply)
-    elif (CMD_HAIKU in comment.body):
-        reply = ds.readRandom(store, HAIKU_STORE)
-        postReply(comment, reply)
-    elif (TRIGGER in comment.body):
-        if CMD_SCORE in comment.body:
-            regex = re.compile(CMD_SCORE + "\s+([0-9]+)\s*")
+    if (cfg.CMD_HS in comment.body):
+        postReply(comment, cfg.highscoresReply(cfg.highscores))
+    elif (cfg.CMD_KOAN in comment.body):
+        postReply(comment, ds.readRandom(store, cfg.KOAN_STORE))
+    elif (cfg.CMD_HAIKU in comment.body):
+        postReply(comment, ds.readRandom(store, cfg.HAIKU_STORE))
+    elif (cfg.TRIGGER in comment.body):
+        if cfg.CMD_SCORE in comment.body:
+            regex = re.compile(cfg.CMD_SCORE + "\s+([0-9]+)\s*")
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
                 needed = int(tempscore)
 
-        # Score the parent comment.
         parent = comment.parent()
-        if scr.alreadyScored(r, parent, already_scored, USERNAME):
-            return
-
-        # Do not allow player to score their own post, unless it's testing.
-        elif not (comment.author == parent.author.name and
-                  comment.author.name != AUTHOR):
-            scr.markScored(parent, already_scored)
-            playBingo(comment, getText(parent))
+        print("parent: " + format(parent))
+        if not cfg.DEBUG:
+            if scr.alreadyScored(r, parent): return
+            elif comment.author == parent.author.name: return
+            elif comment.author.name != cfg.AUTHOR: return
+        else:
+            scr.markScored(parent)
+            scr.playBingo(comment, getText(parent))

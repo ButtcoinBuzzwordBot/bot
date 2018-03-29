@@ -1,12 +1,16 @@
-def processOpts(argv):
-    """ Check optional arguments to import text files into database. """
+import os
+import getopt
+import sqlite3
 
-    global store
+import config as cfg
+
+def processOpts(store, argv):
+    """ Check optional arguments to import text files into database. """
 
     OPTIONS = [
         ["import", "file"],
-        ["import-koans", "file"],
-        ["import-haiku", "file"]
+#        ["import-koans", "file"],
+#        ["import-haiku", "file"]
     ]
 
     # Prepare options data and usage info.
@@ -32,13 +36,13 @@ def processOpts(argv):
     table = argv[2]
     if table == "koans":
         try:
-            CMD_KOAN
+            cfg.CMD_KOAN
         except NameError:
             print("Koans are disabled. Please set CMD_KOAN to use.")
             exit()
     elif table == "haiku":
         try:
-            CMD_HAIKU
+            cfg.CMD_HAIKU
         except NameError:
             print("Haiku are disabled. Please set CMD_HAIKU to use.")
             exit()
@@ -53,8 +57,7 @@ def processOpts(argv):
 
     cur = store.cursor()
     for line in data:
-        if DEBUG:
-            print("Adding: " + line)
+        if cfg.DEBUG: print("Adding: " + line)
         if table == "haiku":
             line = line.replace("\n", "  \n")
         stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
