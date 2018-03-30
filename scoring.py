@@ -64,18 +64,8 @@ def alreadyScored (r, post):
             if cfg.DEBUG: print("Comment already scored, skipping.")
             return True
     else:
-        print("Unknown post type, exiting.")
+        print("ERROR: Unknown post type, exiting.")
         exit()
-
-    #if type(post) is praw.models.Submission:
-    #    replies = post.comments
-    #else:
-    #    replies = post.replies
-    #for reply in replies:
-    #    if (r.comment(reply).author.name == cfg.USERNAME):
-    #        print(reply.body)
-    #        if cfg.DEBUG: print("Replied to by bot, skipping.")
-    #        return True
     return False
 
 def getMatches(text):

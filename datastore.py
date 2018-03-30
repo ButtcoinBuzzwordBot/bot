@@ -1,5 +1,7 @@
+import random
 import sqlite3
 # TODO: import PyMySQL as mysql
+# TODO: test file support after rewrite, globs to config file.
 
 import config as cfg
 
@@ -65,7 +67,16 @@ def readRandom(*args):
     """ Gets a random row from a table. """
 
     if args[0] is "file":
-        print("Not implemented yet.")
+        name = args[1] + ".txt"
+        try:
+            randf = open(name, "r")
+            rand = randf.read().split("|")
+            for stuff in rand:
+                print(stuff)
+            print (rand[random.randrange(0, len(rand))])
+            exit()
+        except FileNotFoundError:
+            print("ERROR: Not implemented yet.")
 
     elif type(args[0]) is sqlite3.Connection:
         args[0].row_factory = None

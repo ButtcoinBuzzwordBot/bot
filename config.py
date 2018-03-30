@@ -13,6 +13,8 @@ REDDIT = "https://redd.it/"
 SUBREDDIT = "buttcoin"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
+# Max. new messages in bot inbox before script quits.
+MAX_MSGS = 12
 
 DATABASE = None
 SCORE_STORE = "score"
@@ -101,6 +103,9 @@ def blockedReply(link):
 #ALREADY_SCORED = "Sorry, someone with stronger hands beat you to this one."
 
 MATCHES = MIN_MATCHES
+
+scoredf = None
+
 buzzwords = set()
 buzzphrases = set()
 already_scored = []

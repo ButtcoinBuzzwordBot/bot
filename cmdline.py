@@ -9,8 +9,6 @@ def processOpts(store, argv):
 
     OPTIONS = [
         ["import", "file"],
-#        ["import-koans", "file"],
-#        ["import-haiku", "file"]
     ]
 
     # Prepare options data and usage info.
@@ -66,7 +64,7 @@ def processOpts(store, argv):
         except sqlite3.Error as err:
             #except (sqlite3.Error, mysql.connector.Error) as err:
             print(err)
-            print("Likely duplicate entry '" + line + "' into " + table)
+            print("Possible duplicate entry '" + line + "' into " + table)
             exit()
     cur.close()
     store.commit()

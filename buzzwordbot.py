@@ -1,13 +1,12 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
-# TODO: Figure out Dogecoin or something useless to award monthly winners.
-# TODO: mysql, memcache support
+# TODO: Figure out Dogecoin or something useless to award monthly winners?
+# TODO: mysql, memcache, log4 support
 # TODO: link to the posts that generated the winning scores
 #  Use format like: https://redd.it/87fwu1
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
-# FIX: not scoring original post, only replies?
 #
-# TODO NOW: consolidate new/update/writeHighscores(). Should be new/read/write.
+# TEST: readRandom() with files.
 
 import sys
 import os
@@ -60,7 +59,7 @@ elif cfg.STORE_TYPE is "mysql":
             user=MYSQL_USER, password=MYSQL_PW, host=MYSQL_HOST, database=DATABASE)
     except mysql.connector.Error as err:
         if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
-            print("Username or password error for " + DATABASE)
+            print("ERROR: Bad sername or password for " + DATABASE)
         elif err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
             dbexists = False
         else:
@@ -89,7 +88,7 @@ msgs = list(r.inbox.unread(limit=None))
 if len(msgs) > 0 and not cfg.HOSTED:
     print(str(len(msgs)) + " message(s) in /u/" + cfg.USERNAME + "\'s inbox.")
     print("Please read before running bot.")
-    if len(msgs) > 12: exit()
+    if len(msgs) > cfg.MAX_MSGS: exit()
 
 try:
     for word in ds.readData(store, cfg.WORD_STORE):
@@ -135,7 +134,7 @@ def main():
                     cmt.checkComment(store, r, comment)
             ds.writeScored(store, cfg.SCORED_STORE)
         if not cfg.HOSTED:
-            print("\nFinished.")
+            print("\nBleep! All done.")
             break
     store.close()
 
