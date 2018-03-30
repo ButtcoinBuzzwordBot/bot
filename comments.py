@@ -40,6 +40,7 @@ def postReply (*args):
         time.sleep(cfg.RATELIMIT)
     except praw.exceptions.APIException as err:
         print(err)
+    return True
 
 def getText (*args):
     """
@@ -110,15 +111,14 @@ def checkComment (*args):
         checkComment(store, r, subcomment)
 
     # Process various triggers if found in comment.
-    if (cfg.TRIGGER in comment.body):
-        if scr.alreadyScored(r, comment): return
-
+    scoredFlag = False
+    if scr.alreadyScored(r, comment): return
     if (cfg.CMD_HS in comment.body):
-        postReply(comment, cfg.highscoresReply(cfg.highscores))
+        scoredFlag = postReply(comment, cfg.highscoresReply(cfg.highscores))
     elif (cfg.CMD_KOAN in comment.body):
-        postReply(comment, ds.readRandom(store, cfg.KOAN_STORE))
+        scoredFlag = postReply(comment, ds.readRandom(store, cfg.KOAN_STORE))
     elif (cfg.CMD_HAIKU in comment.body):
-        postReply(comment, ds.readRandom(store, cfg.HAIKU_STORE))
+        scoredFlag = postReply(comment, ds.readRandom(store, cfg.HAIKU_STORE))
     elif (cfg.TRIGGER in comment.body):
         if cfg.CMD_SCORE in comment.body:
             regex = re.compile(cfg.CMD_SCORE + "\s+([0-9]+)\s*")
@@ -131,7 +131,9 @@ def checkComment (*args):
         if not cfg.DEBUG:
             if scr.alreadyScored(r, parent): return
             elif comment.author == parent.author.name: return
-            elif comment.author.name != cfg.AUTHOR: return
+            #elif comment.author.name != cfg.AUTHOR: return
         else:
             scr.markScored(parent)
-            scr.playBingo(comment, getText(parent))
+            scoredFlag = scr.playBingo(comment, getText(parent))
+    if scoredFlag:
+        ds.writeScored(store, cfg.SCORED_STORE)

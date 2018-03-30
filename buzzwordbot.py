@@ -130,9 +130,7 @@ def main():
             post = r.submission(submission)
             if cfg.DEBUG: print("submission: " + format(post.id))
             for comment in post.comments:
-                if cfg.DEBUG or comment.author != cfg.AUTHOR:
-                    cmt.checkComment(store, r, comment)
-            ds.writeScored(store, cfg.SCORED_STORE)
+                cmt.checkComment(store, r, comment)
         if not cfg.HOSTED:
             print("\nBleep! All done.")
             break

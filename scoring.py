@@ -48,8 +48,8 @@ def markScored (post):
     else:
         entry = str(post.id)
     if entry not in cfg.already_scored:
-        cfg.already_scored.append(entry)
-    
+        cfg.already_scored.append(entry)        
+
 def alreadyScored (r, post):
     """ Check to see if a comment has been replied to already to avoid duplicates. """
 
@@ -103,4 +103,5 @@ def playBingo (comment, text):
     matches_found = getMatches(text)
     updateHighscores(len(matches_found), comment)
     reply = cmt.getReply(matches_found)
-    cmt.postReply(comment, reply, )
+    cmt.postReply(comment, reply)
+    return True

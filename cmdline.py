@@ -58,6 +58,8 @@ def processOpts(store, argv):
         if cfg.DEBUG: print("Adding: " + line)
         if table == "haiku":
             line = line.replace("\n", "  \n")
+        elif table == "koans":
+            line = line.replace("&nbsp;", "  \n&nbsp;  \n")
         stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
         try:
             cur.execute(stmt)
