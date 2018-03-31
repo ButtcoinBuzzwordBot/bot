@@ -17,13 +17,14 @@ def newHighscores (*args: "user") -> list:
         hs.append([i + 1, user, user])
     return(hs)
 
-def updateHighscores (*args: "score, comment") -> None:
+def updateHighscores (*args: "store, score, comment") -> None:
     """
     Check for a new highscore. Replace lowest since they're always sorted.
     """
 
-    score = args[0]
-    comment = args[1]
+    store = args[0]
+    score = args[1]
+    comment = args[2]
     name = comment.author.name
 
     # Don't score the author for testing, no compete flag or duplicate.
@@ -99,12 +100,12 @@ def getMatches (text) -> list:
         matches_found.discard(word + "s")
     return (matches_found)
 
-def playBingo (comment, text) -> True:
+def playBingo (store, comment, text) -> True:
     """ Check if we've already replied, score text and reply. """
 
     if text is None: return
     matches_found = getMatches(text)
-    updateHighscores(len(matches_found), comment)
+    updateHighscores(store, len(matches_found), comment)
     reply = cmt.getReply(matches_found)
     cmt.postReply(comment, reply)
     return True

@@ -124,16 +124,14 @@ def checkComment (*args):
             regex = re.compile(cfg.CMD_SCORE + "\s+([0-9]+)\s*")
             tempscore = regex.search(comment.body).group(1)
             if tempscore is not None:
-                needed = int(tempscore)
+                cfg.MATCHES = int(tempscore)
 
         parent = comment.parent()
-        print("parent: " + format(parent))
-        if not cfg.DEBUG:
-            if scr.alreadyScored(r, parent): return
-            elif comment.author == parent.author.name: return
-            #elif comment.author.name != cfg.AUTHOR: return
+        if cfg.DEBUG: print("parent: " + format(parent))
         else:
-            scr.markScored(parent)
-            scoredFlag = scr.playBingo(comment, getText(parent))
+            if (scr.alreadyScored(r, parent) or
+                comment.author == parent.author.name): return
+        scr.markScored(parent)
+        scoredFlag = scr.playBingo(store, comment, getText(parent))
     if scoredFlag:
         ds.writeScored(store, cfg.SCORED_STORE)

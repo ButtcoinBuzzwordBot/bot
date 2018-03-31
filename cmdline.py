@@ -4,12 +4,16 @@ import sqlite3
 
 import config as cfg
 
-def processOpts(store, argv):
+def processOpts (store, argv) -> None:
     """ Check optional arguments to import text files into database. """
 
     OPTIONS = [
         ["import", "file"],
     ]
+
+    if store == "file":
+        print("This feature is only for database stores.")
+        exit()
 
     # Prepare options data and usage info.
     opts, usage = [],[]
@@ -56,11 +60,6 @@ def processOpts(store, argv):
     cur = store.cursor()
     for line in data:
         if cfg.DEBUG: print("Adding: " + line)
-        if table == "haiku":
-            line = line.replace("\n", "  \n")
-            line = line.replace("''", "'")
-        elif table == "koans":
-            line = line.replace("&nbsp;", "  \n&nbsp;  \n")
         stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
         try:
             cur.execute(stmt)

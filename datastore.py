@@ -74,7 +74,13 @@ def readRandom(*args: "store, file|table") -> str:
         try:
             randf = open(name, "r")
             rand = randf.read().split("|")
-            return(rand[random.randrange(0, len(rand))])
+            entry = rand[random.randrange(0, len(rand))]
+            entry.replace("''", "'")
+            if args[1] == "haiku":
+                entry = entry.replace("\n", "  \n")
+            elif args[1] == "koans":
+                entry = entry.replace("\n&nbsp;", "  \n&nbsp;  ")
+            return(entry)
         except FileNotFoundError:
             print("ERROR: Not implemented yet.")
 

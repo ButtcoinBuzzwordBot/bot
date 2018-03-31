@@ -243,3 +243,12 @@ VTC
 Basilisk
 RavenCoin
 RVN
+blockfolio
+premine
+tenkan-sen
+kijun-sen
+normie
+smartchain
+smartbridge
+crossbridge
+multichain

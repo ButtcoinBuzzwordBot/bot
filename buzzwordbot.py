@@ -3,6 +3,8 @@
 # TODO: mysql, memcache, log4 support
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
+# TODO: cmd line import for highscores from pickle into db
+# FIX: link to comments <> link to submission in highscores
 
 import sys
 import os
@@ -128,7 +130,8 @@ def main():
         if not cfg.HOSTED:
             print("\nBleep! All done.")
             break
-    store.close()
+
+    if store != "file": store.close()
 
 if __name__ == '__main__':
     main()
