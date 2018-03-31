@@ -1,11 +1,14 @@
+import os
 import random
+import pickle
 import sqlite3
 # TODO: import PyMySQL as mysql
 # TODO: test file support after rewrite, globs to config file.
 
 import config as cfg
+import scoring as scr
 
-def createDB(*args):
+def createDB(*args: "store, store_type") -> None:
     """ Create the database and tables. """
 
     store = args[0]
@@ -36,7 +39,7 @@ def createDB(*args):
         cur.close()
     store.commit()
 
-def readData(*args):
+def readData(*args: "store, file|table") -> list:
     """ Read words or phrases data. """
 
     if args[0] is "file":
@@ -63,7 +66,7 @@ def readData(*args):
         raise Exception("Empty " + args[1] + " list. Please import first.")
     return(words)
 
-def readRandom(*args):
+def readRandom(*args: "store, file|table") -> str:
     """ Gets a random row from a table. """
 
     if args[0] is "file":
@@ -71,10 +74,7 @@ def readRandom(*args):
         try:
             randf = open(name, "r")
             rand = randf.read().split("|")
-            for stuff in rand:
-                print(stuff)
-            print (rand[random.randrange(0, len(rand))])
-            exit()
+            return(rand[random.randrange(0, len(rand))])
         except FileNotFoundError:
             print("ERROR: Not implemented yet.")
 
@@ -93,7 +93,7 @@ def readRandom(*args):
         finally:
             cur.close()
         
-def readScore(*args: "store_name, file|table_name, default_score") -> int:
+def readScore(*args: "store, file|table, default_score") -> int:
     """ Returns the current score to win. """
 
     if args[0] is "file":
@@ -119,7 +119,7 @@ def readScore(*args: "store_name, file|table_name, default_score") -> int:
             print("ERROR: Cannot retrieve score from db.")
             exit()
 
-def writeScore(*args) -> None:
+def writeScore(*args: "store, file|table") -> None:
     """ Saves the current score to win. """
 
     score = str(cfg.MATCHES)
@@ -141,7 +141,7 @@ def writeScore(*args) -> None:
             exit()
         args[0].commit()
 
-def readScored(*args) -> list:
+def readScored(*args: "store, file|table") -> list:
     """ Reads list of posts already scored/replied to. """
 
     if args[0] is "file":
@@ -165,8 +165,7 @@ def readScored(*args) -> list:
             print("ERROR: Cannot read scored comments from " + args[1])
             exit()
 
-
-def writeScored(*args):
+def writeScored(*args: "store, file|table") -> None:
     """ Saves list of posts already scored/replied to. """
     
     length = len(cfg.already_scored)
@@ -195,7 +194,7 @@ def writeScored(*args):
             exit()
         args[0].commit()
 
-def readHighscores(*args: "store_type, file|table_name, author") -> list:
+def readHighscores(*args: "store, file|table, author") -> list:
     """ Retrieves list of highscores. """
 
     author = args[2]
@@ -205,7 +204,7 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
             with open(name, "rb") as f:
                 highscores = pickle.load(f)
         else:
-            cfg.highscores = scr.newHighscores("", cfg.SUBREDDIT, author)
+            cfg.highscores = scr.newHighscores(cfg.AUTHOR, cfg.SUBREDDIT, author)
             with open(name, "wb") as f:
                 pickle.dump(cfg.highscores, f)
         f.close()
@@ -221,7 +220,7 @@ def readHighscores(*args: "store_type, file|table_name, author") -> list:
             print("ERROR: Cannot read highscores from " + args[1])
             exit()
 
-def writeHighscores(*args) -> None:
+def writeHighscores(*args:"store, file|table") -> None:
     """ Stores list of highscores. """
 
     if args[0] is "file":

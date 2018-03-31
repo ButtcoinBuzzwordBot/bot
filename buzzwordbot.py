@@ -36,11 +36,10 @@ if cfg.DEBUG: print("Authenticated as: " + format(r.user.me()))
 
 dbexists = True
 if cfg.STORE_TYPE is "file":
-    import pickle
     store = "file"
+    cfg.highscores = ds.readHighscores(store, cfg.HIGHSCORES_STORE, cfg.AUTHOR)
 
 elif cfg.STORE_TYPE is "sqlite":
-    import sqlite3
     cfg.DATABASE = "buzzword.db"
     if not os.path.isfile(cfg.DATABASE):
         dbexists = False
@@ -71,7 +70,8 @@ else:
 
 if not dbexists:
     ds.createDB(store, cfg.STORE_TYPE)
-    ds.writeHighscores(store, cfg.HIGHSCORES_STORE, scr.newHighscores(cfg.AUTHOR))
+    cfg.highscores = ds.readHighscores(store, cfg.HIGHSCORES_STORE, cfg.AUTHOR)
+    ds.writeHighscores(store, cfg.HIGHSCORES_STORE, cfg.highscores)
     print("Database created. Please import word/phrases before running.")
     exit()
 
@@ -110,8 +110,6 @@ cfg.MATCHES = ds.readScore(store, cfg.SCORE_STORE, cfg.MIN_MATCHES)
 # Get comments already scored to prevent repeats and multiple plays.
 cfg.already_scored = ds.readScored(store, cfg.SCORED_STORE)
 
-# Load high scores. If file does not exist, create one.
-cfg.highscores = ds.readHighscores(store, cfg.HIGHSCORES_STORE, cfg.AUTHOR)
 cfg.highscores.sort(key = lambda x: x[0], reverse = True)
 if cfg.DEBUG:
     for score, name, url in cfg.highscores:

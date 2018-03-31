@@ -11,8 +11,11 @@ def newHighscores (*args):
     """ Generates a list of new, generic highscores. """
 
     user = "/u/" + args[0]
+    hs = []
+
     for i in range (0,3):
-        cfg.highscores.append([i + 1, user, user])
+        hs.append([i + 1, user, user])
+    return(hs)
 
 def updateHighscores (*args):
     """

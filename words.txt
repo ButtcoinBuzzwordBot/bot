@@ -241,3 +241,5 @@ DDX
 Vertcoin
 VTC
 Basilisk
+RavenCoin
+RVN

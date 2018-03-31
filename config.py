@@ -5,10 +5,10 @@ import os
 # AUTHOR can compete but highscores will not be registered, to keep the game
 # fair
 
-DEBUG = False
+DEBUG = True
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
-BOTNAME = "python:buzzword.bingo.bot:v1.1 (by /u/" + AUTHOR +")"
+BOTNAME = "python:buzzword.bingo.bot:v1.3 (by /u/" + AUTHOR +")"
 REDDIT = "https://redd.it/"
 SUBREDDIT = "buttcoin"
 MIN_MATCHES = 4
@@ -26,8 +26,8 @@ HAIKU_STORE = "haiku"
 # If HOSTED is True the script continues looping. Set appropriate storage type and
 # info based on your hosting options.
 HOSTED = False
-STORE_TYPE = "sqlite"
-#STORE_TYPE = "file"
+#STORE_TYPE = "sqlite"
+STORE_TYPE = "file"
 #STORE_TYPE = "mysql"
 #MYSQL_USER = "user"
 #MYSQL_PW = "password"
