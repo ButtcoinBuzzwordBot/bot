@@ -1,12 +1,8 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
 # TODO: Figure out Dogecoin or something useless to award monthly winners?
 # TODO: mysql, memcache, log4 support
-# TODO: link to the posts that generated the winning scores
-#  Use format like: https://redd.it/87fwu1
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
-#
-# TEST: readRandom() with files.
 
 import sys
 import os

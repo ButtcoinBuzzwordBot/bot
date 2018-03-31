@@ -7,7 +7,7 @@ import config as cfg
 import comments as cmt
 import datastore as ds
 
-def newHighscores (*args):
+def newHighscores (*args: "user") -> list:
     """ Generates a list of new, generic highscores. """
 
     user = "/u/" + args[0]
@@ -17,7 +17,7 @@ def newHighscores (*args):
         hs.append([i + 1, user, user])
     return(hs)
 
-def updateHighscores (*args):
+def updateHighscores (*args: "score, comment") -> None:
     """
     Check for a new highscore. Replace lowest since they're always sorted.
     """
@@ -43,7 +43,7 @@ def updateHighscores (*args):
     cfg.highscores.sort(key = lambda x: x[0], reverse = True)
     ds.writeHighscores(store, cfg.HIGHSCORES_STORE)
 
-def markScored (post):
+def markScored (post) -> None:
     """ Add Submission or Comment id to the list of scored. """
 
     if type(post) is praw.models.Submission:
@@ -53,7 +53,7 @@ def markScored (post):
     if entry not in cfg.already_scored:
         cfg.already_scored.append(entry)        
 
-def alreadyScored (r, post):
+def alreadyScored (r, post) -> bool:
     """ Check to see if a comment has been replied to already to avoid duplicates. """
 
     # Basic check of replies to avoid duplicates. Redundant but safe if the
@@ -71,7 +71,7 @@ def alreadyScored (r, post):
         exit()
     return False
 
-def getMatches(text):
+def getMatches (text) -> list:
     """ Match words and phrases in text, return score. """
 
     matches_found = set()
@@ -99,7 +99,7 @@ def getMatches(text):
         matches_found.discard(word + "s")
     return (matches_found)
 
-def playBingo (comment, text):
+def playBingo (comment, text) -> True:
     """ Check if we've already replied, score text and reply. """
 
     if text is None: return

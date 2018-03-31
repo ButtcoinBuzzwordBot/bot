@@ -202,13 +202,13 @@ def readHighscores(*args: "store, file|table, author") -> list:
         name = args[1] + ".txt"
         if os.path.isfile(name):
             with open(name, "rb") as f:
-                highscores = pickle.load(f)
+                hs = pickle.load(f)
         else:
-            cfg.highscores = scr.newHighscores(cfg.AUTHOR, cfg.SUBREDDIT, author)
+            hs = scr.newHighscores(cfg.AUTHOR, cfg.SUBREDDIT, author)
             with open(name, "wb") as f:
-                pickle.dump(cfg.highscores, f)
+                pickle.dump(hs, f)
         f.close()
-        return(cfg.highscores)
+        return(hs)
 
     elif type(args[0]) is sqlite3.Connection:
         try:
