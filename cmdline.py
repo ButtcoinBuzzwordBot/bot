@@ -49,6 +49,27 @@ def importHighscores (store, table) -> None:
     dbClose(store, cur)
     exit()
     
+def importScored (store, table) -> None:
+    """ Reads the scored file and updates database. """
+
+    name = table + ".txt"
+    try:
+        scoredf = open(name, "r")
+        scored = scoredf.read().splitlines()
+    except FileNotFoundError:
+        print("ERROR: Cannot find " + name)
+        exit()
+    scoredf.close()
+
+    cur = store.cursor()
+    for comment in scored:
+        stmt = ("INSERT INTO " + table + " VALUES ('" + comment + "')")
+        executeStmt(cur, stmt)
+
+    print("Imported " + table + ".")
+    dbClose(store, cur)
+    exit()
+    
 def processOpts (store, argv) -> None:
     """ Check optional arguments to import text files into database. """
 
@@ -77,11 +98,13 @@ def processOpts (store, argv) -> None:
         name = os.path.basename(__file__)
         print("Usage: " + name + " [", end="")
         print("|".join(usage) + "]")
-        print("    where <file> = words|phrases|highscores|koans|haiku")
+        print("    where <file> = words|phrases|scored|highscores|koans|haiku")
         exit(2)
 
     if file == "highscores":
-        importHighscores (store, file)
+        importHighscores(store, file)
+    elif file == "scored":
+        importScored(store, file)
 
     # Check if options active.
     table = argv[2]
