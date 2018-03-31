@@ -4,7 +4,6 @@
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
 # TODO: cmd line import for highscores from pickle into db
-# FIX: link to comments <> link to submission in highscores
 
 import sys
 import os

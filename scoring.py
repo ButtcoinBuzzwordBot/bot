@@ -27,10 +27,6 @@ def updateHighscores (*args: "store, score, comment") -> None:
     comment = args[2]
     name = comment.author.name
 
-    if cfg.DEBUG:
-        print(comment.submission)
-        exit()
-
     # Don't score the author for testing, no compete flag or duplicate.
     if (name == cfg.AUTHOR) and not cfg.COMPETE:
         return
@@ -38,8 +34,9 @@ def updateHighscores (*args: "store, score, comment") -> None:
         if hscore == score and player == name:
             return
 
-    # FIX: Figure out shortcuts for submission/comment URL.
-    url = cfg.REDDIT + cfg.SUBREDDIT + "/comments/" + comment.id
+    # Update highscores with link to original submission.
+    url = cfg.REDDIT + str(comment.submission)
+    #url = cfg.REDDIT + cfg.SUBREDDIT + "/comments/" + str(comment.submission)
     if len(cfg.highscores) < cfg.MAX_HIGHSCORES:
         cfg.highscores.append((score, "/u/" + name, url))
     elif score > cfg.highscores[cfg.MAX_HIGHSCORES - 1][0]:

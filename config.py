@@ -5,11 +5,12 @@ import os
 # AUTHOR can compete but highscores will not be registered, to keep the game
 # fair
 
-DEBUG = True
+DEBUG = False
 AUTHOR = "BarcaloungerJockey"
-COMPETE = True
+COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.3 (by /u/" + AUTHOR +")"
-REDDIT = "https://reddit.com/r/"
+REDDIT = "https://redd.it/"
+#REDDIT = "https://reddit.com/r/"
 SUBREDDIT = "buttcoin"
 MIN_MATCHES = 4
 MAX_MATCHES = 12
@@ -74,7 +75,8 @@ def highscoresReply (highscores):
         
     count = 1
     for score,name,url in highscores:
-        reply += str(count) + ". " + name + ": **" + str(score) + "** ^(" + url + ")\n"
+        reply += (str(count) + ". " + name + ": **" + str(score) +
+                  "** for [this](" + url + ")\n")
         count += 1
     return(reply)
 
