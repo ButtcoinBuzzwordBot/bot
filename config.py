@@ -5,11 +5,11 @@ import os
 # AUTHOR can compete but highscores will not be registered, to keep the game
 # fair
 
-DEBUG = False
+DEBUG = True
 AUTHOR = "BarcaloungerJockey"
-COMPETE = False
+COMPETE = True
 BOTNAME = "python:buzzword.bingo.bot:v1.3 (by /u/" + AUTHOR +")"
-REDDIT = "https://redd.it/"
+REDDIT = "https://reddit.com/r/"
 SUBREDDIT = "buttcoin"
 MIN_MATCHES = 4
 MAX_MATCHES = 12

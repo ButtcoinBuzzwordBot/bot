@@ -27,6 +27,10 @@ def updateHighscores (*args: "store, score, comment") -> None:
     comment = args[2]
     name = comment.author.name
 
+    if cfg.DEBUG:
+        print(comment.submission)
+        exit()
+
     # Don't score the author for testing, no compete flag or duplicate.
     if (name == cfg.AUTHOR) and not cfg.COMPETE:
         return
@@ -34,7 +38,8 @@ def updateHighscores (*args: "store, score, comment") -> None:
         if hscore == score and player == name:
             return
 
-    url = cfg.REDDIT + comment.id
+    # FIX: Figure out shortcuts for submission/comment URL.
+    url = cfg.REDDIT + cfg.SUBREDDIT + "/comments/" + comment.id
     if len(cfg.highscores) < cfg.MAX_HIGHSCORES:
         cfg.highscores.append((score, "/u/" + name, url))
     elif score > cfg.highscores[cfg.MAX_HIGHSCORES - 1][0]:
@@ -100,10 +105,10 @@ def getMatches (text) -> list:
         matches_found.discard(word + "s")
     return (matches_found)
 
-def playBingo (store, comment, text) -> True:
+def playBingo (store, comment, text) -> bool:
     """ Check if we've already replied, score text and reply. """
 
-    if text is None: return
+    if text is None: return False
     matches_found = getMatches(text)
     updateHighscores(store, len(matches_found), comment)
     reply = cmt.getReply(matches_found)
