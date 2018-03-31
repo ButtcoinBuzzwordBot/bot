@@ -27,8 +27,8 @@ HAIKU_STORE = "haiku"
 # If HOSTED is True the script continues looping. Set appropriate storage type and
 # info based on your hosting options.
 HOSTED = False
-#STORE_TYPE = "sqlite"
-STORE_TYPE = "file"
+STORE_TYPE = "sqlite"
+#STORE_TYPE = "file"
 #STORE_TYPE = "mysql"
 #MYSQL_USER = "user"
 #MYSQL_PW = "password"

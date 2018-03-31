@@ -1,9 +1,54 @@
 import os
 import getopt
+import pickle
 import sqlite3
+#import PyMySQL
 
 import config as cfg
 
+def executeStmt (cur, stmt) -> None:
+    """ Executes an SQL statement. """
+
+    try:
+        cur.execute(stmt)
+    except sqlite3.Error as err:
+        #except (sqlite3.Error, mysql.connector.Error) as err:
+        print(err)
+        exit()
+    except:
+        print("ERROR: executing " + stmt)
+        exit()
+
+def dbClose(store, cur) -> None:
+    """ Closes the open cursor, commits and closes database. """
+
+    cur.close()
+    store.commit()
+    store.close()
+            
+def importHighscores (store, table) -> None:
+    """ Reads the highscore pickle and updates database. """
+
+    name = table + ".txt"
+    if os.path.isfile(name):
+        with open(name, "rb") as f:
+            hs = pickle.load(f)
+    else:
+        print("ERROR: highscores pickle " + name + " not found.")
+        exit()
+
+    cur = store.cursor()
+    executeStmt(cur, "DELETE FROM " + table)
+    for score, name, url in hs:
+        if cfg.DEBUG: print(score,name,url)
+        stmt = ("INSERT INTO " + table + " VALUES (" + str(score) + ", '" + name +
+                "', '" + url + "')")
+        executeStmt(cur, stmt)
+
+    print("Imported " + table + ".")
+    dbClose(store, cur)
+    exit()
+    
 def processOpts (store, argv) -> None:
     """ Check optional arguments to import text files into database. """
 
@@ -12,7 +57,7 @@ def processOpts (store, argv) -> None:
     ]
 
     if store == "file":
-        print("This feature is only for database stores.")
+        print("Importing from files requires a database store.")
         exit()
 
     # Prepare options data and usage info.
@@ -32,7 +77,11 @@ def processOpts (store, argv) -> None:
         name = os.path.basename(__file__)
         print("Usage: " + name + " [", end="")
         print("|".join(usage) + "]")
+        print("    where <file> = words|phrases|highscores|koans|haiku")
         exit(2)
+
+    if file == "highscores":
+        importHighscores (store, file)
 
     # Check if options active.
     table = argv[2]
@@ -60,16 +109,7 @@ def processOpts (store, argv) -> None:
     cur = store.cursor()
     for line in data:
         if cfg.DEBUG: print("Adding: " + line)
-        stmt = "INSERT INTO " + table + " VALUES ('" + line + "')"
-        try:
-            cur.execute(stmt)
-        except sqlite3.Error as err:
-            #except (sqlite3.Error, mysql.connector.Error) as err:
-            print(err)
-            print("Possible duplicate entry '" + line + "' into " + table)
-            exit()
-    cur.close()
-    store.commit()
-    store.close()
-    print("Imported " + str(len(data)) + " lines imported into " + table)
+        executeStmt(cur, "INSERT INTO " + table + " VALUES ('" + line + "')")
+    dbClose(store, cur)
+    print("Imported " + str(len(data)) + " lines into " + table)
     exit()

@@ -142,3 +142,13 @@ buy walls
 sell walls
 disruptive tech
 paradigm changing
+electronic payment
+digital payment
+micropayment channel
+payment channel
+transaction channel
+untrusted parties
+uncooperative participant
+hostile participant
+decrementing timelocks
+incrementing timelocks

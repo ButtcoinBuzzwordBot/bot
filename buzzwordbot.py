@@ -3,10 +3,10 @@
 # TODO: mysql, memcache, log4 support
 # TODO: Add "already played" message? When parent replied, check replies?
 # TODO: Randomize win/loss comments and insults?
-# TODO: cmd line import for highscores from pickle into db
 
 import sys
 import os
+import sqlite3
 
 import praw
 

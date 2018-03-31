@@ -252,3 +252,5 @@ smartchain
 smartbridge
 crossbridge
 multichain
+sighash
+malleability
