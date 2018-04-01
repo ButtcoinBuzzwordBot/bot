@@ -130,7 +130,8 @@ def checkComment (*args):
         if cfg.DEBUG: print("parent: " + format(parent))
         else:
             if (scr.alreadyScored(r, parent) or
-                comment.author == parent.author.name): return
+                comment.author == parent.author.name or
+                parent.author.name == cfg.USERNAME): return
         scr.markScored(parent)
         scoredFlag = scr.playBingo(store, comment, getText(parent))
     if scoredFlag:

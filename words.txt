@@ -254,3 +254,6 @@ crossbridge
 multichain
 sighash
 malleability
+Nyancoin
+NYAN
+GMN
