@@ -3,7 +3,7 @@
 # AUTHOR can compete but highscores will not be registered, to keep the game
 # fair
 
-DEBUG = True
+DEBUG = False
 AUTHOR = "BarcaloungerJockey"
 COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.4 (by /u/" + AUTHOR +")"
