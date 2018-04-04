@@ -1,77 +1,43 @@
-import string
-import re
-
-import praw
-
+import string, re
 import config as cfg
-import comments as cmt
-import datastore as ds
 
-def newHighscores (*args: "user") -> list:
+def newHighscores () -> list:
     """ Generates a list of new, generic highscores. """
 
-    user = "/u/" + args[0]
+    user = "/u/" + cfg.AUTHOR
     hs = []
-
     for i in range (0,3):
         hs.append([i + 1, user, user])
     return(hs)
 
-def updateHighscores (*args: "store, score, comment") -> None:
-    """
-    Check for a new highscore. Replace lowest since they're always sorted.
-    """
-
-    store = args[0]
-    score = args[1]
-    comment = args[2]
-    name = comment.author.name
+def updateHighscores (score, name, url) -> None:
+    """ Check for a new highscore. Replace lowest since they're always sorted. """
 
     # Don't score the author for testing, no compete flag or duplicate.
-    if (name == cfg.AUTHOR) and not cfg.COMPETE:
-        return
+    if (name == cfg.AUTHOR) and not cfg.COMPETE: return
     for hscore, player, url in cfg.highscores:
-        if hscore == score and player == name:
-            return
+        if hscore == score and player == name: return
 
     # Update highscores with link to original submission.
-    url = cfg.REDDIT + str(comment.submission)
-    #url = cfg.REDDIT + cfg.SUBREDDIT + "/comments/" + str(comment.submission)
     if len(cfg.highscores) < cfg.MAX_HIGHSCORES:
         cfg.highscores.append((score, "/u/" + name, url))
     elif score > cfg.highscores[cfg.MAX_HIGHSCORES - 1][0]:
         cfg.highscores[cfg.MAX_HIGHSCORES - 1] = [score, "/u/" + name, url]
 
-    # Resort high to low and save.
     cfg.highscores.sort(key = lambda x: x[0], reverse = True)
-    ds.writeHighscores(store, cfg.HIGHSCORES_STORE)
 
 def markScored (post) -> None:
-    """ Add Submission or Comment id to the list of scored. """
+    """ Add unique post id to the list of scored. """
 
-    if type(post) is praw.models.Submission:
-        entry = "sub " + str(post.id)
-    else:
-        entry = str(post.id)
-    if entry not in cfg.already_scored:
-        cfg.already_scored.append(entry)        
+    if post.id not in cfg.already_scored:
+        cfg.already_scored.append(str(post.id))        
 
 def alreadyScored (r, post) -> bool:
     """ Check to see if a comment has been replied to already to avoid duplicates. """
 
-    # Basic check of replies to avoid duplicates. Redundant but safe if the
-    # data is erased, corrupted, etc.
-    if type(post) is praw.models.Submission:
-        if ("sub " + str(post.id)) in cfg.already_scored:
-            if cfg.DEBUG: print("Submission already scored, skipping.")
-            return True
-    elif type(post) is praw.models.Comment:
-        if (post.id) in cfg.already_scored:
-            if cfg.DEBUG: print("Comment already scored, skipping.")
-            return True
-    else:
-        print("ERROR: Unknown post type, exiting.")
-        exit()
+    if (post.id) in cfg.already_scored:
+        if cfg.DEBUG: print("Post already scored, skipping.")
+        return True
     return False
 
 def getMatches (text) -> list:
@@ -102,12 +68,24 @@ def getMatches (text) -> list:
         matches_found.discard(word + "s")
     return (matches_found)
 
-def playBingo (store, comment, text) -> bool:
+def getReply (matches) -> str:
+    """ Create a reply for win/loss, and updates minimum score required. """
+
+    if len(matches) >= cfg.MATCHES:
+        reply = cfg.winnerReply(matches)
+        if cfg.MATCHES < cfg.MAX_MATCHES:
+            cfg.MATCHES += 1
+    else:
+        reply = cfg.loserReply(cfg.MATCHES)
+        if cfg.MATCHES > cfg.MIN_MATCHES:
+            cfg.MATCHES -= 1
+    return (reply)
+
+def playBingo (comment, text) -> bool:
     """ Check if we've already replied, score text and reply. """
 
     if text is None: return False
     matches_found = getMatches(text)
-    updateHighscores(store, len(matches_found), comment)
-    reply = cmt.getReply(matches_found)
-    cmt.postReply(comment, reply)
-    return True
+    updateHighscores(len(matches_found), comment.author,
+                     cfg.REDDIT + str(comment.submission))
+    return(getReply(matches_found))

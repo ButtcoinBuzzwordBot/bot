@@ -8,247 +8,239 @@ import sqlite3
 import config as cfg
 import scoring as scr
 
-def createDB(*args: "store, store_type") -> None:
-    """ Create the database and tables. """
+class DataStore:
 
-    store = args[0]
-    cur = store.cursor()
-    dbtype = args[1]
-    
-    stmts = [
-        "CREATE TABLE " + cfg.WORD_STORE + " (word VARCHAR(64) UNIQUE NOT NULL)",
-        "CREATE TABLE " + cfg.PHRASE_STORE + " (phrase VARCHAR(255) UNIQUE NOT NULL)",
-        "CREATE TABLE " + cfg.SCORED_STORE + " (scored VARCHAR(16) NOT NULL)",
-        "CREATE TABLE " + cfg.SCORE_STORE + " (score int)",
-        "INSERT INTO " + cfg.SCORE_STORE + " VALUES (" + str(cfg.MIN_MATCHES) + ")",
-        ("CREATE TABLE " + cfg.HIGHSCORES_STORE +
-         " (score int NOT NULL, name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)"),
-        "CREATE TABLE " + cfg.KOAN_STORE + " (koan TEXT NOT NULL)",
-        "CREATE TABLE " + cfg.HAIKU_STORE + " (haiku TEXT NOT NULL)"
-    ]
-    
-    try:
-        for stmt in stmts:
-            cur.execute(stmt)
-    # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
-    except sqlite3.Error:
-        print(err)
-        print("ERROR: Cannot create tables in " + cfg.DATABASE)
-        exit()
-    finally:
-        cur.close()
-    store.commit()
+    def __init__ (self, stype=None):
+        self.stype = stype
+        create_db = False
 
-def readData(*args: "store, file|table") -> list:
-    """ Read words or phrases data. """
-
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            dataf = open(name, "r")
-        except:
-            print("ERROR: File " + name + " does not exist.")
-        words  = dataf.read().splitlines()
-        dataf.close()
-
-    elif type(args[0]) is sqlite3.Connection:
-        args[0].row_factory = lambda cursor, row: row[0]
-        cur = args[0].cursor()
-        try:
-            cur.execute("SELECT * FROM " + args[1])
-            words = cur.fetchall()
-        except sqlite3.Error:
-            print("ERROR: Cannot retrieve " + args[1] + " from db.")
-        finally:
-            cur.close()
-
-    if len(words) == 0:
-        raise Exception("Empty " + args[1] + " list. Please import first.")
-    return(words)
-
-def readRandom(*args: "store, file|table") -> str:
-    """ Gets a random row from a table. """
-
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            randf = open(name, "r")
-            rand = randf.read().split("|")
-            entry = rand[random.randrange(0, len(rand))]
-            entry.replace("''", "'")
-            if args[1] == "haiku":
-                entry = entry.replace("\n", "  \n")
-            elif args[1] == "koans":
-                entry = entry.replace("\n&nbsp;", "  \n&nbsp;  ")
-            return(entry)
-        except FileNotFoundError:
-            print("ERROR: Not implemented yet.")
-
-    elif type(args[0]) is sqlite3.Connection:
-        args[0].row_factory = None
-        cur = args[0].cursor()
-        try:
-            cur.execute("SELECT * FROM " + args[1] + " ORDER BY RANDOM() LIMIT 1")
-            data = cur.fetchall()
-            if data is None:
-                print("ERROR: Please import " + args[1] + " into database.")
+        if self.stype is "sqlite":
+            database = "buzzword.db"
+            if not os.path.isfile(database):
+                create_db = True
+            try:
+                self.store = sqlite3.connect(database)
+            except sqlite3.Error as err:
+                print(err)
+                print("\nERROR: Cannot create or connect to " + cfg.DATABASE)
                 exit()
-            return(data[0][0])
-        except sqlite3.Error:
-            print("ERROR: Cannot retrieve " + args[1] + " from db.")
+
+        elif self.stype is "mysql":
+            print("nope")
+            exit()
+            # TODO: Why isn't this module being found?
+            #import PyMySQL as mysql
+            database = "buzzword"
+            try:
+                self.store = mysql.connector.connect(
+                    user=cfg.MYSQL_USER, password=cfg.MYSQL_PW, host=cfg.MYSQL_HOST,
+                    database=database)
+            except mysql.connector.Error as err:
+                if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
+                    print(err)
+                    print("ERROR: Bad username or password for " + DATABASE)
+                elif err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
+                    create_db = True
+                else:
+                    print(err)
+        else:
+            print("\nERROR: Unknown store type. Check settings.")
+            exit()
+
+        if create_db:
+            self.createDB()
+            print("Database created. Please import word/phrases before running.")
+            exit()
+
+    def executeStmt(self, stmt) -> None:
+        """ Executes an atomic database operation. """
+        
+        try:
+            cur = self.store.cursor()
+            cur.execute(stmt)
+        except sqlite3.Error as err:
+            # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
+            print("\n")
+            print(err)
+            print("ERROR: Cannot execute " + stmt)
+            exit()
         finally:
             cur.close()
-        
-def readScore(*args: "store, file|table, default_score") -> int:
-    """ Returns the current score to win. """
 
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            scoref = open(name, "r")
-            score = int(scoref.readline())
-        except FileNotFoundError:
-            scoref = open(name, "w")
-            score = args[2]
-            scoref.write(str(score))
-        scoref.close()
-        return(score)
+    def fetchStmt(self, stmt) -> list:
+        """ Executes a SELECT statement and returns fetched results. """
 
-    elif type(args[0]) is sqlite3.Connection:
         try:
-            args[0].row_factory = lambda cursor, row: row[0]
-            cur = args[0].cursor()
-            cur.execute("SELECT score FROM " + args[1])
-            score = cur.fetchone()
-            return(int(score))
-        except sqlite3.Error:
-            print("ERROR: Cannot retrieve score from db.")
+            cur = self.store.cursor()
+            cur.execute("SELECT "+ stmt)
+            data = cur.fetchall()
+            cur.close()
+            return(data)
+        except sqlite3.Error as err:
+            # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
+            print("\n"+ err)
+            print("ERROR: Cannot execute SELECT " + stmt)
             exit()
 
-def writeScore(*args: "store, file|table") -> None:
-    """ Saves the current score to win. """
+    def closeDB(self) -> None:
+        """ Commits and closes database. """
 
-    score = str(cfg.MATCHES)
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            scoref = open(name, "w")
-            scoref.write(score)
-        except:
-            print("ERROR: Can't write scores to " + name)
-        scoref.close()
+        self.store.commit()
+        self.store.close()
 
-    elif type(args[0]) is sqlite3.Connection:
-        try:
-            cur = args[0].cursor()
-            cur.execute("UPDATE " + args[1] + " SET score=" + score)
-        except sqlite3.Error:
-            print("ERROR: Cannot update " + args[1] + " in db.")
-            exit()
-        args[0].commit()
+    def createDB(self) -> None:
+        """ Create the database and tables. """
 
-def readScored(*args: "store, file|table") -> list:
-    """ Reads list of posts already scored/replied to. """
-
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            scoredf = open(name, "r")
-            scored = scoredf.read().splitlines()
-        except FileNotFoundError:
-            scoredf = open(name, "w")
-            scored = []
-        scoredf.close()
-        return(scored)
-
-    elif type(args[0]) is sqlite3.Connection:
-        try:
-            args[0].row_factory = lambda cursor, row: row[0]
-            cur = args[0].cursor()
-            cur.execute("SELECT * FROM " + args[1])
-            return(cur.fetchall())
-        except sqlite3.Error:
-            print("ERROR: Cannot read scored comments from " + args[1])
-            exit()
-
-def writeScored(*args: "store, file|table") -> None:
-    """ Saves list of posts already scored/replied to. """
+        stmts = [
+            "CREATE TABLE "+ cfg.WORD_STORE +" (word VARCHAR(64) UNIQUE NOT NULL)",
+            "CREATE TABLE "+ cfg.PHRASE_STORE +" (phrase VARCHAR(255) UNIQUE NOT NULL)",
+            "CREATE TABLE "+ cfg.SCORED_STORE +" (scored VARCHAR(16) NOT NULL)",
+            "CREATE TABLE "+ cfg.SCORE_STORE +" (score int)",
+            "INSERT INTO "+ cfg.SCORE_STORE +" VALUES ("+ str(cfg.MIN_MATCHES) +")",
+            ("CREATE TABLE "+ cfg.HIGHSCORES_STORE + " (score int NOT NULL, " +
+             "name VARCHAR(32) NOT NULL, url VARCHAR(256) NOT NULL)")
+        ]
     
-    length = len(cfg.already_scored)
-    if length > cfg.MAX_MATCHES:
-        already_scored = cfg.already_scored[length - cfg.MAX_MATCHES:length]
+        for stmt in stmts:
+            self.executeStmt(stmt)
+        self.store.commit()
 
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            scoredf = open(name, "w")
-        except:
-            print("ERROR: Cannot write to " + name)
-            exit()
-        scoredf.writelines(("\n".join(cfg.already_scored)) + "\n")
-        scoredf.close()
+    def readData(self, name) -> list:
+        """ Read words or phrases data. """
 
-    elif type(args[0]) is sqlite3.Connection:
-        try:
-            cur = args[0].cursor()
-            cur.execute("DELETE FROM " + args[1])
-            for scored in cfg.already_scored:
-                stmt = "INSERT INTO " + args[1] + " VALUES ('" + scored + "')"
-                cur.execute(stmt)
-        except sqlite3.Error:
-            print("ERROR: Cannot write to " + args[1] + " table.")
-            exit()
-        args[0].commit()
+        if self.stype is "file":
+            name += ".txt"
+            try:
+                dataf = open(name, "r")
+            except:
+                print("\nERROR: File " + name + " does not exist.")
+                exit()
+            data = dataf.read().splitlines()
+            dataf.close()
 
-def readHighscores(*args: "store, file|table, author") -> list:
-    """ Retrieves list of highscores. """
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.store.row_factory = lambda cursor, row: row[0]
+            data = self.fetchStmt(" * FROM " + name)
+            if len(data) == 0:
+                print("Empty " + name + " list. Please import first.")
+                exit()
+            
+        return(data)
 
-    author = args[2]
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        if os.path.isfile(name):
-            with open(name, "rb") as f:
-                hs = pickle.load(f)
-        else:
-            hs = scr.newHighscores(cfg.AUTHOR, cfg.SUBREDDIT, author)
-            with open(name, "wb") as f:
-                pickle.dump(hs, f)
-        f.close()
+    def readScore(self) -> int:
+        """ Returns the current score to win. """
+
+        if self.stype is "file":
+            try:
+                scoref = open(cfg.SCORE_STORE + ".txt", "r")
+                score = int(scoref.readline())
+            except FileNotFoundError:
+                score = cfg.MIN_SCORE
+                scoref = open(cfg.SCORE_STORE + ".txt", "w")
+                scoref.write(str(score))
+            scoref.close()
+            return(score)
+
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.store.row_factory = lambda cursor, row: row[0]
+            return (int(self.fetchStmt(" score FROM " + cfg.SCORE_STORE)[0]))
+
+    def writeScore(self, score) -> None:
+        """ Saves the current score to win. """
+
+        if self.stype is "file":
+            name = cfg.SCORE_STORE + ".txt"
+            try:
+                scoref = open(name, "w")
+                scoref.write(score)
+            except:
+                print("\nERROR: Can't write scores to " + name)
+            scoref.close()
+
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.executeStmt("UPDATE " + cfg.SCORE_STORE + " SET score=" + score)
+            self.store.commit()
+
+    def readScored(self) -> list:
+        """ Reads list of posts already scored/replied to. """
+
+        if self.stype is "file":
+            name = cfg.SCORED_STORE + ".txt"
+            try:
+                scoredf = open(name, "r")
+                scored = scoredf.read().splitlines()
+            except FileNotFoundError:
+                scoredf = open(name, "w")
+                scored = []
+            scoredf.close()
+            return(scored)
+
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.store.row_factory = lambda cursor, row: row[0]
+            return (self.fetchStmt(" * FROM "+ cfg.SCORED_STORE))
+
+    def writeScored(self, scored) -> list:
+        """ Saves list of posts already scored/replied to. """
+    
+        length = len(scored)
+        if length > cfg.MAX_SCORED:
+            scored = scored[length - cfg.MAX_SCORED:length]
+
+            if self.stype is "file":
+                name = cfg.SCORED_STORE + ".txt"
+            try:
+                scoredf = open(name, "w")
+            except:
+                print("\nERROR: Cannot write to " + name)
+                exit()
+            scoredf.writelines(("\n".join(scored)) + "\n")
+            scoredf.close()
+
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.executeStmt("DELETE FROM " + cfg.SCORED_STORE)
+            for s in scored:
+                self.executeStmt("INSERT INTO "+ cfg.SCORED_STORE +" VALUES ('"+ s +"')")
+            self.store.commit()
+
+    def readHighscores(self) -> list:
+        """ Retrieves list of highscores. """
+
+        hs = []
+        if self.stype is "file":
+            name = cfg.HIGHSCORES_STORE + ".txt"
+            if os.path.isfile(name):
+                with open(name, "rb") as f:
+                    hs = pickle.load(f)
+            else:
+                hs = scr.newHighscores()
+                with open(name, "wb") as f:
+                    pickle.dump(hs, f)
+            f.close()
+
+        elif self.stype is "sqlite" or self.stype is "mysql":
+            self.store.row_factory = None
+            hs = self.fetchStmt(" score,name,url FROM " + cfg.HIGHSCORES_STORE)
+            if len(hs) < 1:
+                hs = scr.newHighscores()
+
+        hs.sort(key = lambda x: x[0], reverse = True)
         return(hs)
 
-    elif type(args[0]) is sqlite3.Connection:
-        try:
-            args[0].row_factory = None
-            cur = args[0].cursor()
-            cur.execute("SELECT score,name,url FROM " + args[1])
-            return(cur.fetchall())
-        except sqlite3.Error:
-            print("ERROR: Cannot read highscores from " + args[1])
-            exit()
+    def writeHighscores(self, hs) -> None:
+        """ Stores list of highscores. """
 
-def writeHighscores(*args:"store, file|table") -> None:
-    """ Stores list of highscores. """
+        if self.stype is "file":
+            name = cfg.HIGHSCORES_STORE + ".txt"
+            try:
+                with open(name, "wb") as f:
+                    pickle.dump(hs, f)
+            except:
+                print("\nERROR: Cannot write to file " + name)
+            f.close()
 
-    if args[0] is "file":
-        name = args[1] + ".txt"
-        try:
-            with open(name, "wb") as f:
-                pickle.dump(cfg.highscores, f)
-        except:
-            print("ERROR: Cannot write to file " + name)
-        f.close()
-
-    elif type(args[0]) is sqlite3.Connection:
-        try:
-            cur = args[0].cursor()
-            cur.execute("DELETE FROM " + args[1])
-            for score, name, url in cfg.highscores:
-                stmt = (
-                    "INSERT INTO " + args[1] + " VALUES (" + str(score) +
-                    ", '" + name + "', '" + url + "')"
-                )
-                cur.execute(stmt)
-        except sqlite3.Error:
-            print("ERROR: Cannot write highscores to " + args[1] + " table.")
-            exit()
-        args[0].commit()
+        elif self.stype is "sqlite" or self.type is "mysql":
+            self.executeStmt("DELETE FROM "+ cfg.HIGHSCORES_STORE)
+            for score, name, url in hs:
+                stmt = ("INSERT INTO "+ cfg.HIGHSCORES_STORE +" VALUES ("+ str(score) +
+                        ", '"+ name +"', '"+ url +"')")
+                self.executeStmt(stmt)
