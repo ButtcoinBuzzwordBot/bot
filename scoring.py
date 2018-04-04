@@ -32,7 +32,7 @@ def markScored (post) -> None:
     if post.id not in cfg.already_scored:
         cfg.already_scored.append(str(post.id))        
 
-def alreadyScored (r, post) -> bool:
+def alreadyScored (post) -> bool:
     """ Check to see if a comment has been replied to already to avoid duplicates. """
 
     if (post.id) in cfg.already_scored:

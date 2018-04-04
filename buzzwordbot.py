@@ -1,13 +1,8 @@
 # I'm the Buttcoin Buzzword Bingo Bot. Bleep bloop!
 # TODO: Figure out Dogecoin or something useless to award monthly winners?
-# TODO: mysql, memcache, log4 support
-# TODO: Add "already played" message? When parent replied, check replies?
-# FIX: test all cases when replies should not be allowed.
-# FIX: highscores not reading for SQLite? Add import from file.
-# FIX: Add newline to start of all error msgs.
+# TODO: mysql, memcache, log support
 
 import sys, traceback, time
-import praw
 import config as cfg, datastore as ds, comments as cmt, cmdline, oauth
 
 def main(r):
@@ -59,7 +54,7 @@ def main(r):
                 print("\nBleep! All done.")
                 break
 
-        if store != "file": dstore.closeDB()
+        if cfg.STORE_TYPE is not "file": dstore.closeDB()
 
     except:
         if cfg.DEBUG: traceback.print_exc()

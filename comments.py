@@ -20,11 +20,29 @@ class Comment:
         except praw.exceptions.APIException as err:
             print(err)
 
+    def getHTML (self, link):
+        """ Attempt to scrape text from link, skip PDF, etc. """
+
+        if cfg.DEBUG: print("link: " + link)
+        if link is None or link.find(".pdf", len(link) -4)!= -1: return(None)
+        try:
+            with urllib.request.urlopenlink(link) as response:
+                html = response.read()
+                try:
+                    soup = bs4.BeautifulSoup(html, "html.parser")
+                except html.HTMLParser.HTMLParseError:
+                    if cfg.DEBUG:
+                        print("\nERROR: Unable to parse page, skipping.")
+                    return(text)
+                text = soup.find('body').getText()
+                return(text)
+        except urllib.error.HTTPError:
+            scr.markScored(comment)
+            self.postReply(cfg.blockedReply(link))
+        return(None)
+        
     def getText (self, parent):
-        """
-        Retrieve text from a variety of possible sources: original or crosspost,
-        relies, linked Reddit posts, etc.
-        """
+        """ Retrieve text from a variety of possible sources. """
 
         # Try to get text from original post.
         try:
@@ -40,41 +58,18 @@ class Comment:
                 except AttributeError:
                     print("\nERROR: Unsupported or broken post reference.")
                 
+        # Try to get text from link in title, skip PDF.
         if text is None or text is "":
-            # Try to get text from link in title, skip PDF.
-            try:
-                link = parent.url
-                if cfg.DEBUG: print("link: " + link)
-                if link is not None:
-                    if link.find(".pdf", len(link) -4)!= -1: return(None)
-                    try:
-                        with urllib.request.urlopen(link) as response:
-                            html = response.read()
-                            try:
-                                soup = bs4.BeautifulSoup(html, "html.parser")
-                            except html.HTMLParser.HTMLParseError:
-                                if cfg.DEBUG:
-                                    print("\nERROR: Unable to parse page, skipping.")
-                                return(text)
-                            text = soup.find('body').getText()
-                            return(text)
-                    except urllib.error.HTTPError:
-                        scr.markScored(comment)
-                        postReply(comment, cfg.blockedReply(link))
-                else:
-                    print("\nERROR: Empty link, this shouldn't happen.")
-                    exit()
-            except AttributeError:
-                print("\nERROR: Not implemented yet, skipping.")
+            text = self.getHTML(parent.url)
         return(text)
 
     def scanComment (self):
         """ Looks for triggers in a comment. """
 
-        if not (cfg.TRIGGER in self.comment.body):
-            return(None)
+        if not (cfg.TRIGGER in self.comment.body): return(None)
+        if scr.alreadyScored(self.comment): return
+        else: scr.markScored(self.comment)
 
-        scr.markScored(self.comment)
         if cfg.CMD_HS in self.comment.body:
             return(cfg.highscoresReply(cfg.highscores))
         else:
@@ -85,11 +80,13 @@ class Comment:
                     cfg.MATCHES = int(tempscore)
 
             parent = self.comment.parent()
-            if cfg.DEBUG: print("parent: " + format(parent))
-            else:
-                if (scr.alreadyScored(self.r, parent) or
-                    self.comment.author == parent.author.name or
-                    parent.author.name == cfg.USERNAME): return(None)
+            if cfg.DEBUG: print("parent: " + format(parent.id))
+            if scr.alreadyScored(parent):
+                return(cfg.alreadyPlayed)
+
+            author = parent.author.name
+            if not cfg.DEBUG and self.comment.author == author:
+                return(cfg.selfPlayed)
             scr.markScored(parent)
             return(scr.playBingo(self.comment, self.getText(parent)))
 
@@ -98,8 +95,15 @@ class Comment:
 
         if cfg.DEBUG: print("comment: " + format(self.comment))
         elif not cfg.HOSTED: print(".", end="", flush=True)
+        
         self.comment.refresh()
         replies = self.comment.replies
+
+        # Check for triggers.
+        result = self.scanComment()
+        if result is not None:
+            self.dstore.writeScored(cfg.already_scored)
+            self.postReply(result)
 
         # Traverse comment forest (trees.)
         for reply in replies:
@@ -107,9 +111,3 @@ class Comment:
             subcomment.refresh()
             c = Comment(self.dstore, self.r, subcomment)
             c.checkComment()
-
-        if scr.alreadyScored(self.r, self.comment): return
-        result = self.scanComment()
-        if result is not None:
-            self.postReply(result)
-            self.dstore.writeScored(cfg.already_scored)

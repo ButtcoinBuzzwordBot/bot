@@ -1,5 +1,3 @@
-import os
-
 # When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
 # to customize the bot, along with the words and phrases files. By default the
 # AUTHOR can compete but highscores will not be registered, to keep the game
@@ -49,6 +47,12 @@ sig = (
     "| Send praise, rage or arcade game tokens to /u/" + AUTHOR + ", *beep*)"
 )
 
+# Post already replied to.
+alreadyPlayed = "Sorry weak hands, that post was already played."
+
+# Playing off one's own post.
+selfPlayed = "Tsk, tsk nocoiner. No gaming the system by playing your own posts."
+
 # Highscore report reply.
 def highscoresReply (hs):
     reply = (
@@ -86,7 +90,6 @@ def blockedReply(link):
 MATCHES = MIN_MATCHES
 
 scoredf = None
-
 buzzwords = set()
 buzzphrases = set()
 already_scored = []

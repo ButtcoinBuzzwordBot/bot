@@ -1,9 +1,6 @@
-import os
-import getopt
-import pickle
+import os, getopt, pickle
 import sqlite3
 #import PyMySQL
-
 import config as cfg
 
 def importHighscores (dstore, table) -> None:

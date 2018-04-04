@@ -1,12 +1,9 @@
-import os
-import random
-import pickle
+import os, pickle
 import sqlite3
 # TODO: import PyMySQL as mysql
 # TODO: test file support after rewrite, globs to config file.
 
-import config as cfg
-import scoring as scr
+import config as cfg, scoring as scr
 
 class DataStore:
 
