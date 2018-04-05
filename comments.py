@@ -74,7 +74,7 @@ class Comment:
             return(cfg.highscoresReply(cfg.highscores))
         else:
             if cfg.CMD_SCORE in self.comment.body:
-                regex = re.compile(cfg.CMD_SCORE + "\s+([0-9]+)\s*")
+                regex = re.compile(cfg.CMD_SCORE + "\s+([0-9]{1,3})\s*")
                 tempscore = regex.search(self.comment.body).group(1)
                 if tempscore is not None:
                     cfg.MATCHES = int(tempscore)
