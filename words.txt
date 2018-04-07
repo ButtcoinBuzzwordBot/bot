@@ -255,3 +255,4 @@ malleability
 Nyancoin
 NYAN
 GMN
+Voorhees

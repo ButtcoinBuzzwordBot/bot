@@ -47,7 +47,7 @@ def getMatches (text) -> list:
 
     # Remove all punctuation from words, and convert dashes to spaces for
     # phrases.
-    text = text.replace("\'-/", " ").lower()
+    text = text.replace("\'-/", "").lower()
     regex = re.compile("[%s]" % re.escape(string.punctuation))
     words = regex.sub("", text).split()
 

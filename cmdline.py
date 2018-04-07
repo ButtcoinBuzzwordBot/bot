@@ -49,7 +49,7 @@ def processOpts (dstore, argv) -> None:
     """ Check optional arguments to import text files into database. """
 
     OPTIONS = [
-        ["import", "file"],
+        ["import", "file"]
     ]
 
     if dstore.stype is not "sqlite" and dstore.stype is not "mysql":

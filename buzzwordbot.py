@@ -43,7 +43,7 @@ def main(r):
 
     try:
         while True:
-            sub = r.subreddit(cfg.SUBREDDIT).new()
+            sub = r.subreddit(cfg.SUBREDDIT).new(limit=50)
             for submission in sub:
                 post = r.submission(submission)
                 if cfg.DEBUG: print("submission: " + format(post.id))

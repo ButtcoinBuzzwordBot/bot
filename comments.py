@@ -26,7 +26,7 @@ class Comment:
         if cfg.DEBUG: print("link: " + link)
         if link is None or link.find(".pdf", len(link) -4)!= -1: return(None)
         try:
-            with urllib.request.urlopenlink(link) as response:
+            with urllib.request.urlopen(link) as response:
                 html = response.read()
                 try:
                     soup = bs4.BeautifulSoup(html, "html.parser")
@@ -99,15 +99,15 @@ class Comment:
         self.comment.refresh()
         replies = self.comment.replies
 
-        # Check for triggers.
-        result = self.scanComment()
-        if result is not None:
-            self.dstore.writeScored(cfg.already_scored)
-            self.postReply(result)
-
-        # Traverse comment forest (trees.)
+        # Traverse comment forest (trees) depth-first.
         for reply in replies:
             subcomment = self.r.comment(reply)
             subcomment.refresh()
             c = Comment(self.dstore, self.r, subcomment)
             c.checkComment()
+
+        # Check for triggers. Need to find best place to recurse.
+        result = self.scanComment()
+        if result is not None:
+            self.dstore.writeScored(cfg.already_scored)
+            self.postReply(result)
