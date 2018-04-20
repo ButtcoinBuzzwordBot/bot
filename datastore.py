@@ -1,48 +1,56 @@
 import os, pickle
-import sqlite3
-# TODO: import PyMySQL as mysql
-# TODO: test file support after rewrite, globs to config file.
 
-import config as cfg, scoring as scr
+import config as cfg
+
+if cfg.STORE_TYPE is "sqlite":
+    import sqlite3
+elif cfg.STORE_TYPE is "mysql":
+    import pymysql as mysql
+else:
+    raise cfg.ExitException("ERROR: store type not supported.")
+
+import scoring as scr
 
 class DataStore:
+    """ Database class. Supports SQLite and MySQL. """
 
-    def __init__ (self, stype=None):
-        self.stype = stype
+    def __init__(self, dbtype=None):
+        self.dbtype = dbtype
         create_db = False
 
-        if self.stype is "sqlite":
-            database = "buzzword.db"
+        if self.dbtype is "sqlite":
+            database = cfg.DATABASE + ".db"
             if not os.path.isfile(database):
                 create_db = True
             try:
                 self.store = sqlite3.connect(database)
             except sqlite3.Error as err:
-                print(err)
-                print("\nERROR: Cannot create or connect to " + cfg.DATABASE)
-                exit()
+                raise cfg.ExitException(err
+                                        + "\nERROR: Cannot create or connect to "
+                                        + cfg.DATABASE)
+            self.store.row_factory = lambda cursor, row: row[0]
 
-        elif self.stype is "mysql":
-            print("nope")
-            exit()
-            # TODO: Why isn't this module being found?
-            #import PyMySQL as mysql
-            database = "buzzword"
+        elif self.dbtype is "mysql":
             try:
-                self.store = mysql.connector.connect(
-                    user=cfg.MYSQL_USER, password=cfg.MYSQL_PW, host=cfg.MYSQL_HOST,
-                    database=database)
-            except mysql.connector.Error as err:
-                if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
-                    print(err)
-                    print("ERROR: Bad username or password for " + DATABASE)
-                elif err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
-                    create_db = True
-                else:
-                    print(err)
+                self.store = mysql.connect(host=cfg.MYSQL_HOST,
+                                           user=cfg.MYSQL_USER,
+                                           password=cfg.MYSQL_PW,
+                                           db=cfg.DATABASE,
+                                           charset='utf8')
+            except mysql.Error as err:
+                raise cfg.ExitException(
+                    err + "\nERROR: Cannot create or connect to "+ cfg.DATABASE)
+
+            self.store.row_factory = lambda cursor, row: row[0]
+            cur = self.store.cursor()
+            cur.execute("SHOW TABLES LIKE '"+ cfg.SCORED_STORE +"'")
+            result = cur.fetchone()
+            if result is None:
+                dbexists = False
+            cur.close()
+
         else:
-            print("\nERROR: Unknown store type. Check settings.")
-            exit()
+            raise cfg.ExitException("Database type "+ dbtype +" not supported.")
 
         if create_db:
             self.createDB()
@@ -51,16 +59,12 @@ class DataStore:
 
     def executeStmt(self, stmt) -> None:
         """ Executes an atomic database operation. """
-        
+
         try:
             cur = self.store.cursor()
             cur.execute(stmt)
-        except sqlite3.Error as err:
-            # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
-            print("\n")
-            print(err)
-            print("ERROR: Cannot execute " + stmt)
-            exit()
+        except Exception as err:
+            raise cfg.ExitException(err + "\nERROR: Cannot execute " + stmt)
         finally:
             cur.close()
 
@@ -71,13 +75,11 @@ class DataStore:
             cur = self.store.cursor()
             cur.execute("SELECT "+ stmt)
             data = cur.fetchall()
+        except Exception as err:
+            raise cfg.ExitException(err + "\nERROR: Cannot execute SELECT " + stmt)
+        finally:
             cur.close()
-            return(data)
-        except sqlite3.Error as err:
-            # TODO: except (sqlite3.Error, mysql.connector.Error) as err:
-            print("\n"+ err)
-            print("ERROR: Cannot execute SELECT " + stmt)
-            exit()
+        return(data)
 
     def closeDB(self) -> None:
         """ Commits and closes database. """
@@ -102,10 +104,22 @@ class DataStore:
             self.executeStmt(stmt)
         self.store.commit()
 
+    def deleteTable(self, table) -> None:
+        """ Deletes all entries from a table. """
+
+        if self.dbtype is "sqlite" or self.dbtype is "mysql":
+            try:
+                cur = self.store.cursor()
+                cur.execute("DELETE FROM "+ table)
+            except:
+                return
+            finally:
+                cur.close()
+
     def readData(self, name) -> list:
         """ Read words or phrases data. """
 
-        if self.stype is "file":
+        if self.dbtype is "file":
             name += ".txt"
             try:
                 dataf = open(name, "r")
@@ -115,8 +129,7 @@ class DataStore:
             data = dataf.read().splitlines()
             dataf.close()
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
-            self.store.row_factory = lambda cursor, row: row[0]
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             data = self.fetchStmt(" * FROM " + name)
             if len(data) == 0:
                 print("Empty " + name + " list. Please import first.")
@@ -127,7 +140,7 @@ class DataStore:
     def readScore(self) -> int:
         """ Returns the current score to win. """
 
-        if self.stype is "file":
+        if self.dbtype is "file":
             try:
                 scoref = open(cfg.SCORE_STORE + ".txt", "r")
                 score = int(scoref.readline())
@@ -135,33 +148,34 @@ class DataStore:
                 score = cfg.MIN_SCORE
                 scoref = open(cfg.SCORE_STORE + ".txt", "w")
                 scoref.write(str(score))
-            scoref.close()
+            finally:
+                scoref.close()
             return(score)
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
-            self.store.row_factory = lambda cursor, row: row[0]
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             return (int(self.fetchStmt(" score FROM " + cfg.SCORE_STORE)[0]))
 
     def writeScore(self, score) -> None:
         """ Saves the current score to win. """
 
-        if self.stype is "file":
+        if self.dbtype is "file":
             name = cfg.SCORE_STORE + ".txt"
             try:
                 scoref = open(name, "w")
                 scoref.write(score)
             except:
-                print("\nERROR: Can't write scores to " + name)
-            scoref.close()
+                raise cfg.ExitException("\nERROR: Can't write scores to " + name)
+            finally:
+                scoref.close()
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             self.executeStmt("UPDATE " + cfg.SCORE_STORE + " SET score=" + score)
             self.store.commit()
 
     def readScored(self) -> list:
         """ Reads list of posts already scored/replied to. """
 
-        if self.stype is "file":
+        if self.dbtype is "file":
             name = cfg.SCORED_STORE + ".txt"
             try:
                 scoredf = open(name, "r")
@@ -169,11 +183,11 @@ class DataStore:
             except FileNotFoundError:
                 scoredf = open(name, "w")
                 scored = []
-            scoredf.close()
+            finally:
+                scoredf.close()
             return(scored)
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
-            self.store.row_factory = lambda cursor, row: row[0]
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             return (self.fetchStmt(" * FROM "+ cfg.SCORED_STORE))
 
     def writeScored(self, scored) -> list:
@@ -183,17 +197,16 @@ class DataStore:
         if length > cfg.MAX_SCORED:
             scored = scored[length - cfg.MAX_SCORED:length]
 
-            if self.stype is "file":
+            if self.dbtype is "file":
                 name = cfg.SCORED_STORE + ".txt"
             try:
                 scoredf = open(name, "w")
             except:
-                print("\nERROR: Cannot write to " + name)
-                exit()
+                raise cfg.ExitException("\nERROR: Cannot write to " + name)
             scoredf.writelines(("\n".join(scored)) + "\n")
             scoredf.close()
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             self.executeStmt("DELETE FROM " + cfg.SCORED_STORE)
             for s in scored:
                 self.executeStmt("INSERT INTO "+ cfg.SCORED_STORE +" VALUES ('"+ s +"')")
@@ -203,7 +216,7 @@ class DataStore:
         """ Retrieves list of highscores. """
 
         hs = []
-        if self.stype is "file":
+        if self.dbtype is "file":
             name = cfg.HIGHSCORES_STORE + ".txt"
             if os.path.isfile(name):
                 with open(name, "rb") as f:
@@ -214,8 +227,7 @@ class DataStore:
                     pickle.dump(hs, f)
             f.close()
 
-        elif self.stype is "sqlite" or self.stype is "mysql":
-            self.store.row_factory = None
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             hs = self.fetchStmt(" score,name,url FROM " + cfg.HIGHSCORES_STORE)
             if len(hs) < 1:
                 hs = scr.newHighscores()
@@ -226,16 +238,17 @@ class DataStore:
     def writeHighscores(self, hs) -> None:
         """ Stores list of highscores. """
 
-        if self.stype is "file":
+        if self.dbtype is "file":
             name = cfg.HIGHSCORES_STORE + ".txt"
             try:
                 with open(name, "wb") as f:
                     pickle.dump(hs, f)
             except:
-                print("\nERROR: Cannot write to file " + name)
-            f.close()
+                raise cfg.ExitException("\nERROR: Cannot write to file " + name)
+            finally:
+                f.close()
 
-        elif self.stype is "sqlite" or self.type is "mysql":
+        elif self.dbtype is "sqlite" or self.dbtype is "mysql":
             self.executeStmt("DELETE FROM "+ cfg.HIGHSCORES_STORE)
             for score, name, url in hs:
                 stmt = ("INSERT INTO "+ cfg.HIGHSCORES_STORE +" VALUES ("+ str(score) +

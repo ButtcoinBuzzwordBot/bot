@@ -1,30 +1,41 @@
-# When DEBUG is True the bot will only reply to posts by AUTHOR. Modify these
-# to customize the bot, along with the words and phrases files. By default the
-# AUTHOR can compete but highscores will not be registered, to keep the game
-# fair
+# Buzzword Bingo Bot config file. Bleep bloop.
+#
+# TODO: Figure out Dogecoin or something useless to award monthly winners?
+# TODO: mysql support.
 
+import os
+
+# When DEBUG is True the bot will only reply to posts by AUTHOR and uses a test
+# sub defined in the oauth module.
 DEBUG = False
+
+# If HOSTED is True the script continues looping indefinitely.
+HOSTED = True
+
+# If ALLOW_COMPETE is True the AUTHOR can set highscores.
+ALLOW_COMPETE = False
+
 AUTHOR = "BarcaloungerJockey"
-COMPETE = False
 BOTNAME = "python:buzzword.bingo.bot:v1.4 (by /u/" + AUTHOR +")"
+USERNAME = os.environ['REDDIT_USERNAME']
+IGNORE = [USERNAME, AUTHOR, "reddit"]
 REDDIT = "https://redd.it/"
 SUBREDDIT = "buttcoin"
+
+# Min/max matches to win, changes dynamically.
 MIN_MATCHES = 4
 MAX_MATCHES = 12
-# Max. new messages in bot inbox before script quits.
-MAX_MSGS = 12
 
+# Datastores.
 SCORE_STORE = "score"
 WORD_STORE = "words"
 PHRASE_STORE = "phrases"
-MAX_SCORED = 300
+MAX_SCORED = 1000
 SCORED_STORE = "scored"
 MAX_HIGHSCORES = 5
 HIGHSCORES_STORE = "highscores"
 
-# If HOSTED is True the script continues looping. Set appropriate storage type and
-# info based on your hosting options.
-HOSTED = False
+DATABASE = "buzzword"
 STORE_TYPE = "sqlite"
 #STORE_TYPE = "file"
 #STORE_TYPE = "mysql"
@@ -54,7 +65,7 @@ alreadyPlayed = "Sorry weak hands, that post was already played."
 selfPlayed = "Tsk, tsk nocoiner. No gaming the system by playing your own posts."
 
 # Highscore report reply.
-def highscoresReply (hs):
+def highscoresReply (hs) -> str:
     reply = (
         "**" + SUBREDDIT.title() + " Buzzword Bingo Highscores**\n_____\n\n"
     )
@@ -67,14 +78,14 @@ def highscoresReply (hs):
     return(reply)
 
 # Winning reply.
-def winnerReply (matches):
+def winnerReply (matches) -> str:
     return(
     "**Bingo**! We have a winner with *" + str(len(matches)) +
         "* matches found!!\n\n**Buzzwords**: " + ", ".join(matches)
     )
 
 # Losing reply.
-def loserReply(score):
+def loserReply(score) -> str:
     return (
         "Sorry bro, your hands are weak. Current score to win is **" +
         str(score) + "** or more matches. Convert more filty fiat to "
@@ -82,13 +93,16 @@ def loserReply(score):
     )
 
 # Link to website blocked for robots.
-def blockedReply(link):
+def blockedReply(link) -> str:
     return (
         "No way, bro. Robots are blocked for: " + link
     )
 
-MATCHES = MIN_MATCHES
+# Exception to print error and exit main loop.
+class ExitException(Exception):
+    pass
 
+MATCHES = MIN_MATCHES
 scoredf = None
 buzzwords = set()
 buzzphrases = set()

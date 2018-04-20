@@ -1,7 +1,8 @@
 import string, re
+
 import config as cfg
 
-def newHighscores () -> list:
+def newHighscores() -> list:
     """ Generates a list of new, generic highscores. """
 
     user = "/u/" + cfg.AUTHOR
@@ -10,11 +11,11 @@ def newHighscores () -> list:
         hs.append([i + 1, user, user])
     return(hs)
 
-def updateHighscores (score, name, url) -> None:
+def updateHighscores(score, name, url) -> None:
     """ Check for a new highscore. Replace lowest since they're always sorted. """
 
     # Don't score the author for testing, no compete flag or duplicate.
-    if (name == cfg.AUTHOR) and not cfg.COMPETE: return
+    if (name == cfg.AUTHOR) and not cfg.ALLOW_COMPETE: return
     for hscore, player, url in cfg.highscores:
         if hscore == score and player == name: return
 
@@ -26,13 +27,13 @@ def updateHighscores (score, name, url) -> None:
 
     cfg.highscores.sort(key = lambda x: x[0], reverse = True)
 
-def markScored (post) -> None:
+def markScored(post) -> None:
     """ Add unique post id to the list of scored. """
 
     if post.id not in cfg.already_scored:
         cfg.already_scored.append(str(post.id))        
 
-def alreadyScored (post) -> bool:
+def alreadyScored(post) -> bool:
     """ Check to see if a comment has been replied to already to avoid duplicates. """
 
     if (post.id) in cfg.already_scored:
@@ -68,7 +69,7 @@ def getMatches (text) -> list:
         matches_found.discard(word + "s")
     return (matches_found)
 
-def getReply (matches) -> str:
+def getReply(matches) -> str:
     """ Create a reply for win/loss, and updates minimum score required. """
 
     if len(matches) >= cfg.MATCHES:
@@ -81,11 +82,11 @@ def getReply (matches) -> str:
             cfg.MATCHES -= 1
     return (reply)
 
-def playBingo (comment, text) -> bool:
+def playBingo(comment, text) -> bool:
     """ Check if we've already replied, score text and reply. """
 
     if text is None: return False
     matches_found = getMatches(text)
-    updateHighscores(len(matches_found), comment.author,
-                     cfg.REDDIT + str(comment.submission))
+    updateHighscores(len(matches_found), str(comment.author),
+                     cfg.REDDIT + str(comment.id))
     return(getReply(matches_found))

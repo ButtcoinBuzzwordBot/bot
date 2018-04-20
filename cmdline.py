@@ -1,6 +1,8 @@
 import os, getopt, pickle
+
 import sqlite3
 #import PyMySQL
+
 import config as cfg
 
 def importHighscores (dstore, table) -> None:
@@ -52,7 +54,7 @@ def processOpts (dstore, argv) -> None:
         ["import", "file"],
     ]
 
-    if dstore.stype is not "sqlite" and dstore.stype is not "mysql":
+    if dstore.dbtype is not "sqlite" and dstore.dbtype is not "mysql":
         print("Importing from files requires a database store.")
         exit()
 
@@ -72,25 +74,26 @@ def processOpts (dstore, argv) -> None:
     except getopt.GetoptError:
         name = os.path.basename(__file__)
         print("Usage: " + name + " [", end="")
-        print("|".join(usage) + "]")
-        print("    where <file> = words|phrases|scored|highscores|koans|haiku")
+        print(" | ".join(usage) + "]")
+        print("    where <file> = words | phrases | scored | highscores")
         exit(2)
 
     if file == "highscores":
         importHighscores(store, file)
     elif file == "scored":
         importScored(store, file)
+    else:
+        table = argv[2]
+        dataf = open(table + ".txt", "r")
+        data = dataf.read().splitlines()
+        dataf.close()
 
-    # Check if options active.
-    table = argv[2]
-    dataf = open(table + ".txt", "r")
-    data = dataf.read().splitlines()
-    dataf.close()
+        dstore.deleteTable(table)
+        for line in data:
+            if cfg.DEBUG: print("Adding: " + line)
+            dstore.executeStmt("INSERT INTO " + table + " VALUES ('" + line + "')")
 
-    for line in data:
-        if cfg.DEBUG: print("Adding: " + line)
-        dstore.executeStmt("INSERT INTO " + table + " VALUES ('" + line + "')")
+        dstore.closeDB()
+        print("Imported " + str(len(data)) + " lines into " + table)
 
-    dstore.closeDB()
-    print("Imported " + str(len(data)) + " lines into " + table)
     exit()
