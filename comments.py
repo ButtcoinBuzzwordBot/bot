@@ -41,11 +41,21 @@ class Comment:
                     if cfg.DEBUG:
                         print("\nERROR: Unable to parse page, skipping.")
                     return(text)
+                except html.HTMLParser.ReadTimeoutError as err:
+                    raise cfg.ExitException("ReadTimeout: " + err)
+                except Exception as err:
+                    raise cfg.ExitException(err + "\nError parsing HTML.")
                 text = soup.find('body').getText()
                 return(text)
         except urllib.error.HTTPError:
             scr.markScored(comment)
             self.postReply(cfg.blockedReply(link))
+        except urllib.error.ReadTimeoutError as err:
+            raise cfg.ExitException("Read Timeout: " + err)
+        except urllib.error.ConnectionTimeout as err:
+            raise cfg.ExitException("Connection Timeout: " + err)
+        except Exception as err:
+            raise cfg.ExitException(err + "\nError scraping HTML.")
         return(None)
         
     def getText(self, parent) -> str:

@@ -2,6 +2,8 @@
 
 import sys, traceback, time
 
+import praw
+
 import config as cfg
 import datastore as ds
 import comments as cmt
@@ -11,14 +13,8 @@ def checkInbox(r, dbase):
     """ Check inbox and reply randomly to new messages from regular users. """
 
     msgs = list(r.inbox.unread(limit=None))
-
-    if len(msgs) > 0 and not cfg.HOSTED:
+    if cfg.DEBUG or (len(msgs) > 0 and not cfg.HOSTED):
         print(str(len(msgs)) +" message(s) in /u/"+ cfg.USERNAME +"\'s inbox.")
-
-    for msg in msgs:
-        msg.mark_read()
-        if msg.author not in cfg.IGNORE:
-            msg.reply(cfg.botReply(dbase.readRandom(cfg.REPLY_STORE)) + cfg.sig)
 
 def main(r):
     """ Initialize and recurse through submissions and replies. """
@@ -47,7 +43,7 @@ def main(r):
     cfg.already_scored = dstore.readScored()
     cfg.highscores = dstore.readHighscores()
     if cfg.DEBUG:
-        print ("Type CRTL-C CTRL-C to exit.")
+        print ("Type CRTL-C to exit.")
         for score, name, url in cfg.highscores:
             print("Name: " + name + " got " + str(score) + " (" + url + ")")
 
@@ -67,10 +63,12 @@ def main(r):
     except cfg.ExitException as err:
         print(err)
         exit()
-    except:
-        if cfg.DEBUG: traceback.print_exc()
-        time.sleep(30)
-        if cfg.DEBUG: print("\nERROR: Reddit timeout, resuming.")
+    except praw.exceptions.PRAWException as err:
+        if cfg.DEBUG: print(err + "\nERROR: Reddit timeout, resuming.")
+        time.sleep(60)
+    except Exception as err:
+        time.sleep(60)
+        if cfg.DEBUG: print(err + "\nERROR: Reddit error, resuming.")
 
     if cfg.STORE_TYPE is not "file":
         dstore.closeDB()

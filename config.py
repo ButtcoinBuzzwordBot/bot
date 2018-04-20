@@ -7,7 +7,7 @@ import os
 
 # When DEBUG is True the bot will only reply to posts by AUTHOR and uses a test
 # sub defined in the oauth module.
-DEBUG = False
+DEBUG = True
 
 # If HOSTED is True the script continues looping indefinitely.
 HOSTED = True
