@@ -8,6 +8,7 @@ import config as cfg
 import scoring as scr
 
 class Comment:
+    """ Scan and process posts, reply as appropriate. """
 
     def __init__(self, dstore=None, r=None, post=None) -> None:
         self.dstore = dstore
@@ -32,8 +33,11 @@ class Comment:
 
         if cfg.DEBUG: print("link: " + link)
         if link is None or link.find(".pdf", len(link) -4)!= -1: return(None)
+        req = urllib.request.Request(url=link, data=None,
+                                     headers={'User-Agent':cfg.BOTNAME})
         try:
-            with urllib.request.urlopenlink(link) as response:
+            with urllib.request.urlopen(req) as response:
+                print("opened url")
                 html = response.read()
                 try:
                     soup = bs4.BeautifulSoup(html, "html.parser")
@@ -41,21 +45,16 @@ class Comment:
                     if cfg.DEBUG:
                         print("\nERROR: Unable to parse page, skipping.")
                     return(text)
-                except html.HTMLParser.ReadTimeoutError as err:
-                    raise cfg.ExitException("ReadTimeout: " + err)
                 except Exception as err:
-                    raise cfg.ExitException(err + "\nError parsing HTML.")
+                    raise cfg.ExitException(format(err) + "\nError parsing HTML.")
                 text = soup.find('body').getText()
                 return(text)
-        except urllib.error.HTTPError:
-            scr.markScored(comment)
+        except urllib.error.HTTPError as err:
+            if cfg.DEBUG: print(err)
+            scr.markScored(self.post)
             self.postReply(cfg.blockedReply(link))
-        except urllib.error.ReadTimeoutError as err:
-            raise cfg.ExitException("Read Timeout: " + err)
-        except urllib.error.ConnectionTimeout as err:
-            raise cfg.ExitException("Connection Timeout: " + err)
         except Exception as err:
-            raise cfg.ExitException(err + "\nError scraping HTML.")
+            raise cfg.ExitException(format(err) + "\nError scraping HTML.")
         return(None)
         
     def getText(self, parent) -> str:

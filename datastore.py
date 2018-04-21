@@ -94,6 +94,7 @@ class DataStore:
             "CREATE TABLE "+ cfg.WORD_STORE +" (word VARCHAR(64) UNIQUE NOT NULL)",
             "CREATE TABLE "+ cfg.PHRASE_STORE +" (phrase VARCHAR(255) UNIQUE NOT NULL)",
             "CREATE TABLE "+ cfg.SCORED_STORE +" (scored VARCHAR(16) NOT NULL)",
+            "CREATE TABLE "+ cfg.SCORED_STORE +"_debug (scored VARCHAR(16) NOT NULL)",
             "CREATE TABLE "+ cfg.SCORE_STORE +" (score int)",
             "INSERT INTO "+ cfg.SCORE_STORE +" VALUES ("+ str(cfg.MIN_MATCHES) +")",
             ("CREATE TABLE "+ cfg.HIGHSCORES_STORE + " (score int NOT NULL, " +

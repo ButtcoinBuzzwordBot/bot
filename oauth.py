@@ -13,7 +13,7 @@ def auth():
 
     # Initialize PRAW with custom User-Agent.
     if cfg.DEBUG:
-        #cfg.SUBREDDIT = "testingground4bots"
+        cfg.SUBREDDIT = "testingground4bots"
         print("Username/pass: " + cfg.USERNAME, cfg.PASSWORD)
         print("Client ID/pass: " + cfg.CLIENT_ID, cfg.CLIENT_SECRET)
         print("Authenticating...")

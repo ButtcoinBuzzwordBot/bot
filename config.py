@@ -3,7 +3,7 @@
 # TODO: Figure out Dogecoin or something useless to award monthly winners?
 # TODO: mysql support.
 
-import os
+import os, traceback
 
 # When DEBUG is True the bot will only reply to posts by AUTHOR and uses a test
 # sub defined in the oauth module.
@@ -16,7 +16,7 @@ HOSTED = True
 ALLOW_COMPETE = False
 
 AUTHOR = "BarcaloungerJockey"
-BOTNAME = "python:buzzword.bingo.bot:v1.4 (by /u/" + AUTHOR +")"
+BOTNAME = "python:buzzword.bingo.bot:v1.4.1 (by /u/" + AUTHOR +")"
 USERNAME = os.environ['REDDIT_USERNAME']
 IGNORE = [USERNAME, AUTHOR, "reddit"]
 REDDIT = "https://redd.it/"
@@ -30,10 +30,11 @@ MAX_MATCHES = 12
 SCORE_STORE = "score"
 WORD_STORE = "words"
 PHRASE_STORE = "phrases"
-MAX_SCORED = 1000
-SCORED_STORE = "scored"
 MAX_HIGHSCORES = 5
 HIGHSCORES_STORE = "highscores"
+MAX_SCORED = 1000
+SCORED_STORE = "scored"
+if DEBUG: SCORED_STORE += "_debug"
 
 DATABASE = "buzzword"
 STORE_TYPE = "sqlite"

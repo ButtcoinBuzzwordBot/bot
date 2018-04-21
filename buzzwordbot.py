@@ -64,11 +64,11 @@ def main(r):
         print(err)
         exit()
     except praw.exceptions.PRAWException as err:
-        if cfg.DEBUG: print(err + "\nERROR: Reddit timeout, resuming.")
+        if cfg.DEBUG: print(str(err) + "\nERROR: Reddit timeout, resuming.")
         time.sleep(60)
     except Exception as err:
         time.sleep(60)
-        if cfg.DEBUG: print(err + "\nERROR: Reddit error, resuming.")
+        if cfg.DEBUG: print(str(err) + "\nERROR: Reddit error, resuming.")
 
     if cfg.STORE_TYPE is not "file":
         dstore.closeDB()
